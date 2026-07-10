@@ -41,7 +41,7 @@ if (!app) {
 app.innerHTML = `
   <main class="shell">
     <section class="panel">
-      <p class="eyebrow">Open Station</p>
+      <p class="eyebrow">Honknet Solutions</p>
       <h1>Space Station 15</h1>
       <p>Browser-first multiplayer 2D immersive simulation framework.</p>
 

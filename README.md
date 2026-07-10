@@ -2,7 +2,7 @@
 
 **Space Station 15** is a browser-first open-source framework for multiplayer 2D immersive simulation games.
 
-It is developed by **Open Station** as a modular foundation for persistent roleplay sandboxes: cyberpunk cities, space stations, colonies, bunkers, fantasy settlements and other simulation-heavy worlds.
+It is developed by **Honknet Solutions** as a modular foundation for persistent roleplay sandboxes: cyberpunk cities, space stations, colonies, bunkers, fantasy settlements and other simulation-heavy worlds.
 
 Space Station 15 is **not** a Space Station 14 fork, not a RobustToolbox fork, and not tied to space station mechanics. Space stations, atmospherics and shuttles are optional game modules, not core assumptions.
 

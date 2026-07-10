@@ -1,6 +1,6 @@
 # Contributing
 
-Space Station 15 is developed by Open Station.
+Space Station 15 is developed by Honknet Solutions.
 
 Early development rules:
 
