@@ -24,7 +24,13 @@ type ClientMessage =
   | { type: 'Interact'; data: { target: number } };
 
 type ServerMessage =
-  | { type: 'Welcome'; data: { client_id: string } }
+  | {
+      type: 'Welcome';
+      data: {
+        client_id: string;
+        entity_net_id: number;
+      };
+    }
   | { type: 'Snapshot'; data: { tick: number; entities: EntitySnapshot[] } }
   | { type: 'Chat'; data: { from: string; text: string } }
   | { type: 'Error'; data: { message: string } };
@@ -61,6 +67,8 @@ const button = document.querySelector<HTMLButtonElement>('#connect');
 const serverUrlInput = document.querySelector<HTMLInputElement>('#server-url');
 
 let socket: WebSocket | null = null;
+let clientId: string | null = null;
+let playerEntityNetId: number | null = null;
 
 function writeLog(message: string): void {
   if (!log) {
@@ -82,7 +90,11 @@ function sendClientMessage(message: ClientMessage): void {
 function handleServerMessage(message: ServerMessage): void {
   switch (message.type) {
     case 'Welcome':
-      writeLog(`Welcome received. client_id=${message.data.client_id}`);
+      clientId = message.data.client_id;
+      playerEntityNetId = message.data.entity_net_id;
+      writeLog(
+        `Welcome received. client_id=${clientId}, player_entity=${playerEntityNetId}`,
+      );
       break;
 
     case 'Snapshot':
@@ -91,8 +103,11 @@ function handleServerMessage(message: ServerMessage): void {
       );
 
       for (const entity of message.data.entities) {
+        const ownershipLabel =
+          entity.net_id === playerEntityNetId ? ' [you]' : '';
+
         writeLog(
-          `Entity ${entity.net_id}: ${entity.prototype} at (${entity.position.x}, ${entity.position.y}, z=${entity.position.z})`,
+          `Entity ${entity.net_id}${ownershipLabel}: ${entity.prototype} at (${entity.position.x}, ${entity.position.y}, z=${entity.position.z})`,
         );
       }
 

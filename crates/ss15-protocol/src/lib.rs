@@ -36,6 +36,7 @@ pub enum ClientMessage {
 pub enum ServerMessage {
     Welcome {
         client_id: ClientId,
+        entity_net_id: EntityNetId,
     },
     Snapshot {
         tick: u64,

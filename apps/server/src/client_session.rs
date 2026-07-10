@@ -2,7 +2,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use ss15_protocol::{ClientMessage, ServerMessage};
+use ss15_protocol::{ClientMessage, EntityNetId, ServerMessage};
 use tokio::{net::TcpStream, time};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info, warn};
@@ -21,7 +21,7 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
 
     let (mut sender, mut receiver) = websocket.split();
     let client_id = Uuid::new_v4();
-    let mut is_handshaken = false;
+    let mut player_entity_net_id: Option<EntityNetId> = None;
     let mut snapshot_interval = time::interval(SNAPSHOT_INTERVAL);
 
     loop {
@@ -55,16 +55,17 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
                             }
                         };
 
-                        if handle_client_message(
+                        if let Some(entity_net_id) = handle_client_message(
                             &mut sender,
                             peer_addr,
                             client_id,
                             client_message,
                             &state,
+                            player_entity_net_id,
                         )
                         .await?
                         {
-                            is_handshaken = true;
+                            player_entity_net_id = Some(entity_net_id);
                         }
                     }
                     Message::Close(_) => {
@@ -81,7 +82,7 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
                 }
             }
 
-            _ = snapshot_interval.tick(), if is_handshaken => {
+            _ = snapshot_interval.tick(), if player_entity_net_id.is_some() => {
                 let state = state.read().await;
                 send_server_message(&mut sender, &state.snapshot_message()).await?;
             }
@@ -100,21 +101,48 @@ async fn handle_client_message(
     client_id: Uuid,
     message: ClientMessage,
     state: &SharedServerState,
-) -> Result<bool> {
+    player_entity_net_id: Option<EntityNetId>,
+) -> Result<Option<EntityNetId>> {
     match message {
         ClientMessage::Hello { client_version } => {
+            if let Some(existing_entity_net_id) = player_entity_net_id {
+                warn!(%peer_addr, %client_id, "Client sent duplicate Hello");
+
+                send_server_message(
+                    sender,
+                    &ServerMessage::Welcome {
+                        client_id,
+                        entity_net_id: existing_entity_net_id,
+                    },
+                )
+                .await?;
+
+                return Ok(None);
+            }
+
             info!(%peer_addr, %client_id, %client_version, "Client handshake accepted");
 
-            send_server_message(sender, &ServerMessage::Welcome { client_id }).await?;
+            let mut state_write = state.write().await;
+            let entity_net_id = state_write.spawn_player_entity();
+            let snapshot = state_write.snapshot_message();
+            drop(state_write);
 
-            let state = state.read().await;
-            send_server_message(sender, &state.snapshot_message()).await?;
+            send_server_message(
+                sender,
+                &ServerMessage::Welcome {
+                    client_id,
+                    entity_net_id,
+                },
+            )
+            .await?;
 
-            Ok(true)
+            send_server_message(sender, &snapshot).await?;
+
+            Ok(Some(entity_net_id))
         }
         ClientMessage::Input { seq, movement } => {
             debug!(%peer_addr, seq, ?movement, "Received input message");
-            Ok(false)
+            Ok(None)
         }
         ClientMessage::Chat { text } => {
             send_server_message(
@@ -126,11 +154,11 @@ async fn handle_client_message(
             )
             .await?;
 
-            Ok(false)
+            Ok(None)
         }
         ClientMessage::Interact { target } => {
             debug!(%peer_addr, target, "Received interaction message");
-            Ok(false)
+            Ok(None)
         }
     }
 }
