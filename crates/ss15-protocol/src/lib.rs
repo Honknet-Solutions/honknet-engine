@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 pub type ClientId = Uuid;
 pub type EntityNetId = u64;
+pub type PlayerIdentityId = String;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Vec2 {
@@ -25,10 +26,20 @@ pub struct NetPosition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
-    Hello { client_version: String },
-    Input { seq: u32, movement: Vec2 },
-    Chat { text: String },
-    Interact { target: EntityNetId },
+    Hello {
+        client_version: String,
+        identity_id: PlayerIdentityId,
+    },
+    Input {
+        seq: u32,
+        movement: Vec2,
+    },
+    Chat {
+        text: String,
+    },
+    Interact {
+        target: EntityNetId,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

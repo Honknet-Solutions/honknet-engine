@@ -2,7 +2,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use ss15_protocol::{ClientMessage, EntityNetId, ServerMessage};
+use ss15_protocol::{ClientMessage, EntityNetId, PlayerIdentityId, ServerMessage};
 use tokio::{net::TcpStream, time};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info, warn};
@@ -21,75 +21,106 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
 
     let (mut sender, mut receiver) = websocket.split();
     let client_id = Uuid::new_v4();
+
+    let mut player_identity_id: Option<PlayerIdentityId> = None;
     let mut player_entity_net_id: Option<EntityNetId> = None;
+
     let mut snapshot_interval = time::interval(SNAPSHOT_INTERVAL);
 
-    loop {
-        tokio::select! {
-            maybe_message = receiver.next() => {
-                let Some(message) = maybe_message else {
-                    info!(%peer_addr, "Client disconnected");
-                    break;
-                };
-
-                let message = message.context("failed to read WebSocket message")?;
-
-                match message {
-                    Message::Text(text) => {
-                        debug!(%peer_addr, %text, "Received client message");
-
-                        let client_message = match serde_json::from_str::<ClientMessage>(&text) {
-                            Ok(client_message) => client_message,
-                            Err(err) => {
-                                warn!(%peer_addr, error = %err, "Rejected malformed client message");
-
-                                send_server_message(
-                                    &mut sender,
-                                    &ServerMessage::Error {
-                                        message: "Malformed client message".to_string(),
-                                    },
-                                )
-                                .await?;
-
-                                continue;
-                            }
-                        };
-
-                        if let Some(entity_net_id) = handle_client_message(
-                            &mut sender,
-                            peer_addr,
-                            client_id,
-                            client_message,
-                            &state,
-                            player_entity_net_id,
-                        )
-                        .await?
-                        {
-                            player_entity_net_id = Some(entity_net_id);
-                        }
-                    }
-                    Message::Close(_) => {
+    let result: Result<()> = async {
+        loop {
+            tokio::select! {
+                maybe_message = receiver.next() => {
+                    let Some(message) = maybe_message else {
                         info!(%peer_addr, "Client disconnected");
                         break;
-                    }
-                    Message::Ping(payload) => {
-                        sender.send(Message::Pong(payload)).await?;
-                    }
-                    Message::Pong(_) => {}
-                    Message::Binary(_) | Message::Frame(_) => {
-                        warn!(%peer_addr, "Ignoring unsupported WebSocket message type");
+                    };
+
+                    let message = message.context("failed to read WebSocket message")?;
+
+                    match message {
+                        Message::Text(text) => {
+                            debug!(%peer_addr, %text, "Received client message");
+
+                            let client_message = match serde_json::from_str::<ClientMessage>(&text) {
+                                Ok(client_message) => client_message,
+                                Err(err) => {
+                                    warn!(%peer_addr, error = %err, "Rejected malformed client message");
+
+                                    send_server_message(
+                                        &mut sender,
+                                        &ServerMessage::Error {
+                                            message: "Malformed client message".to_string(),
+                                        },
+                                    )
+                                    .await?;
+
+                                    continue;
+                                }
+                            };
+
+                            if let Some((identity_id, entity_net_id)) = handle_client_message(
+                                &mut sender,
+                                peer_addr,
+                                client_id,
+                                client_message,
+                                &state,
+                                player_identity_id.as_ref(),
+                                player_entity_net_id,
+                            )
+                            .await?
+                            {
+                                player_identity_id = Some(identity_id);
+                                player_entity_net_id = Some(entity_net_id);
+                            }
+                        }
+                        Message::Close(_) => {
+                            info!(%peer_addr, "Client disconnected");
+                            break;
+                        }
+                        Message::Ping(payload) => {
+                            sender.send(Message::Pong(payload)).await?;
+                        }
+                        Message::Pong(_) => {}
+                        Message::Binary(_) | Message::Frame(_) => {
+                            warn!(%peer_addr, "Ignoring unsupported WebSocket message type");
+                        }
                     }
                 }
-            }
 
-            _ = snapshot_interval.tick(), if player_entity_net_id.is_some() => {
-                let state = state.read().await;
-                send_server_message(&mut sender, &state.snapshot_message()).await?;
+                _ = snapshot_interval.tick(), if player_entity_net_id.is_some() => {
+                    let state = state.read().await;
+                    send_server_message(&mut sender, &state.snapshot_message()).await?;
+                }
             }
+        }
+
+        Ok(())
+    }
+    .await;
+
+    if let Some(identity_id) = player_identity_id {
+        let mut state = state.write().await;
+
+        if let Some(entity_net_id) = state.mark_player_disconnected(&identity_id) {
+            info!(
+                %peer_addr,
+                %client_id,
+                %identity_id,
+                entity_net_id,
+                "Marked player disconnected; entity remains in world"
+            );
+        } else {
+            warn!(
+                %peer_addr,
+                %client_id,
+                %identity_id,
+                "Player record was missing on disconnect"
+            );
         }
     }
 
-    Ok(())
+    result
 }
 
 async fn handle_client_message(
@@ -101,18 +132,44 @@ async fn handle_client_message(
     client_id: Uuid,
     message: ClientMessage,
     state: &SharedServerState,
-    player_entity_net_id: Option<EntityNetId>,
-) -> Result<Option<EntityNetId>> {
+    current_identity_id: Option<&PlayerIdentityId>,
+    current_entity_net_id: Option<EntityNetId>,
+) -> Result<Option<(PlayerIdentityId, EntityNetId)>> {
     match message {
-        ClientMessage::Hello { client_version } => {
-            if let Some(existing_entity_net_id) = player_entity_net_id {
-                warn!(%peer_addr, %client_id, "Client sent duplicate Hello");
+        ClientMessage::Hello {
+            client_version,
+            identity_id,
+        } => {
+            if let Some(existing_identity_id) = current_identity_id {
+                if existing_identity_id == &identity_id {
+                    warn!(%peer_addr, %client_id, %identity_id, "Client sent duplicate Hello");
+
+                    if let Some(entity_net_id) = current_entity_net_id {
+                        send_server_message(
+                            sender,
+                            &ServerMessage::Welcome {
+                                client_id,
+                                entity_net_id,
+                            },
+                        )
+                        .await?;
+                    }
+
+                    return Ok(None);
+                }
+
+                warn!(
+                    %peer_addr,
+                    %client_id,
+                    old_identity_id = %existing_identity_id,
+                    new_identity_id = %identity_id,
+                    "Client tried to change identity after handshake"
+                );
 
                 send_server_message(
                     sender,
-                    &ServerMessage::Welcome {
-                        client_id,
-                        entity_net_id: existing_entity_net_id,
+                    &ServerMessage::Error {
+                        message: "Cannot change identity after handshake".to_string(),
                     },
                 )
                 .await?;
@@ -120,10 +177,16 @@ async fn handle_client_message(
                 return Ok(None);
             }
 
-            info!(%peer_addr, %client_id, %client_version, "Client handshake accepted");
+            info!(
+                %peer_addr,
+                %client_id,
+                %client_version,
+                %identity_id,
+                "Client handshake accepted"
+            );
 
             let mut state_write = state.write().await;
-            let entity_net_id = state_write.spawn_player_entity();
+            let entity_net_id = state_write.connect_player(client_id, identity_id.clone());
             let snapshot = state_write.snapshot_message();
             drop(state_write);
 
@@ -138,7 +201,7 @@ async fn handle_client_message(
 
             send_server_message(sender, &snapshot).await?;
 
-            Ok(Some(entity_net_id))
+            Ok(Some((identity_id, entity_net_id)))
         }
         ClientMessage::Input { seq, movement } => {
             debug!(%peer_addr, seq, ?movement, "Received input message");

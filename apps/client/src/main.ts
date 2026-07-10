@@ -18,7 +18,13 @@ type EntitySnapshot = {
 };
 
 type ClientMessage =
-  | { type: 'Hello'; data: { client_version: string } }
+  | {
+      type: 'Hello';
+      data: {
+        client_version: string;
+        identity_id: string;
+      };
+    }
   | { type: 'Input'; data: { seq: number; movement: Vec2 } }
   | { type: 'Chat'; data: { text: string } }
   | { type: 'Interact'; data: { target: number } };
@@ -37,6 +43,7 @@ type ServerMessage =
 
 const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
+const GUEST_IDENTITY_STORAGE_KEY = 'ss15.guestIdentityId';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
@@ -69,6 +76,23 @@ const serverUrlInput = document.querySelector<HTMLInputElement>('#server-url');
 let socket: WebSocket | null = null;
 let clientId: string | null = null;
 let playerEntityNetId: number | null = null;
+
+const playerIdentityId = getOrCreateGuestIdentityId();
+
+writeLog(`Guest identity: ${playerIdentityId}`);
+
+function getOrCreateGuestIdentityId(): string {
+  const existingIdentityId = localStorage.getItem(GUEST_IDENTITY_STORAGE_KEY);
+
+  if (existingIdentityId && existingIdentityId.trim().length > 0) {
+    return existingIdentityId;
+  }
+
+  const newIdentityId = `guest-${crypto.randomUUID()}`;
+  localStorage.setItem(GUEST_IDENTITY_STORAGE_KEY, newIdentityId);
+
+  return newIdentityId;
+}
 
 function writeLog(message: string): void {
   if (!log) {
@@ -146,6 +170,7 @@ function connectToServer(): void {
       type: 'Hello',
       data: {
         client_version: CLIENT_VERSION,
+        identity_id: playerIdentityId,
       },
     });
   });
