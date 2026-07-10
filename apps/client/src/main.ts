@@ -1,12 +1,12 @@
 import './style.css';
 
 import { ClientConnection } from './connection';
-import {
-  DebugRenderer,
-  type DebugRendererState,
-} from './debugRenderer';
 import { getOrCreateGuestIdentityId } from './identity';
 import { InputController } from './input';
+import {
+  PixiRenderer,
+  type PixiRendererState,
+} from './pixiRenderer';
 import type {
   EntityNetId,
   EntitySnapshot,
@@ -17,7 +17,9 @@ const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
 const INPUT_SEND_INTERVAL_MS = 50;
 
-const app = document.querySelector<HTMLDivElement>('#app');
+const app = document.querySelector<HTMLDivElement>(
+  '#app',
+);
 
 if (!app) {
   throw new Error('Missing #app root element');
@@ -35,7 +37,10 @@ app.innerHTML = `
 
       <label class="field">
         <span>Server URL</span>
-        <input id="server-url" value="${DEFAULT_SERVER_URL}" />
+        <input
+          id="server-url"
+          value="${DEFAULT_SERVER_URL}"
+        />
       </label>
 
       <button id="connect">Connect</button>
@@ -48,7 +53,9 @@ app.innerHTML = `
 
         <div>
           <span class="status-label">Client</span>
-          <strong id="client-status">not connected</strong>
+          <strong id="client-status">
+            not connected
+          </strong>
         </div>
 
         <div>
@@ -62,7 +69,7 @@ app.innerHTML = `
         </div>
       </div>
 
-      <canvas id="viewport" width="800" height="480"></canvas>
+      <div id="viewport"></div>
 
       <p class="hint">
         Use WASD or arrow keys after connecting.
@@ -73,31 +80,44 @@ app.innerHTML = `
   </main>
 `;
 
-const log = document.querySelector<HTMLPreElement>('#log');
+const log =
+  document.querySelector<HTMLPreElement>('#log');
 
 const connectButton =
-  document.querySelector<HTMLButtonElement>('#connect');
+  document.querySelector<HTMLButtonElement>(
+    '#connect',
+  );
 
 const serverUrlInput =
-  document.querySelector<HTMLInputElement>('#server-url');
+  document.querySelector<HTMLInputElement>(
+    '#server-url',
+  );
 
-const canvasElement =
-  document.querySelector<HTMLCanvasElement>('#viewport');
+const viewportElement =
+  document.querySelector<HTMLElement>('#viewport');
 
 const identityStatus =
-  document.querySelector<HTMLElement>('#identity-status');
+  document.querySelector<HTMLElement>(
+    '#identity-status',
+  );
 
 const clientStatus =
-  document.querySelector<HTMLElement>('#client-status');
+  document.querySelector<HTMLElement>(
+    '#client-status',
+  );
 
 const entityStatus =
-  document.querySelector<HTMLElement>('#entity-status');
+  document.querySelector<HTMLElement>(
+    '#entity-status',
+  );
 
 const tickStatus =
-  document.querySelector<HTMLElement>('#tick-status');
+  document.querySelector<HTMLElement>(
+    '#tick-status',
+  );
 
-if (!canvasElement) {
-  throw new Error('Missing #viewport canvas');
+if (!viewportElement) {
+  throw new Error('Missing #viewport element');
 }
 
 let clientId: string | null = null;
@@ -111,12 +131,19 @@ const entitiesByNetId = new Map<
 >();
 
 const inputController = new InputController();
-const debugRenderer = new DebugRenderer(canvasElement);
-const playerIdentityId = getOrCreateGuestIdentityId();
+
+const pixiRenderer = new PixiRenderer(
+  viewportElement,
+);
+
+const playerIdentityId =
+  getOrCreateGuestIdentityId();
 
 const connection = new ClientConnection({
   onOpen: () => {
-    writeLog('WebSocket opened. Sending Hello.');
+    writeLog(
+      'WebSocket opened. Sending Hello.',
+    );
 
     connection.send({
       type: 'Hello',
@@ -148,10 +175,11 @@ const connection = new ClientConnection({
   },
 });
 
+await pixiRenderer.initialize();
+
 setText(identityStatus, playerIdentityId);
 writeLog(`Guest identity: ${playerIdentityId}`);
 
-debugRenderer.start();
 updateRendererState();
 
 window.setInterval(() => {
@@ -174,14 +202,17 @@ function writeLog(message: string): void {
     return;
   }
 
-  const currentLines = log.textContent?.split('\n') ?? [];
+  const currentLines =
+    log.textContent?.split('\n') ?? [];
 
   const nextLines = [
     ...currentLines,
     `${new Date().toLocaleTimeString()} ${message}`,
   ];
 
-  log.textContent = nextLines.slice(-18).join('\n');
+  log.textContent = nextLines
+    .slice(-18)
+    .join('\n');
 }
 
 function sendCurrentInput(): void {
@@ -193,11 +224,15 @@ function sendCurrentInput(): void {
     return;
   }
 
-  const movement = inputController.getMovement();
+  const movement =
+    inputController.getMovement();
 
   updateRendererState();
 
-  if (movement.x === 0 && movement.y === 0) {
+  if (
+    movement.x === 0 &&
+    movement.y === 0
+  ) {
     return;
   }
 
@@ -212,14 +247,21 @@ function sendCurrentInput(): void {
   });
 }
 
-function handleServerMessage(message: ServerMessage): void {
+function handleServerMessage(
+  message: ServerMessage,
+): void {
   switch (message.type) {
     case 'Welcome':
       clientId = message.data.client_id;
-      playerEntityNetId = message.data.entity_net_id;
+      playerEntityNetId =
+        message.data.entity_net_id;
 
       setText(clientStatus, clientId);
-      setText(entityStatus, String(playerEntityNetId));
+
+      setText(
+        entityStatus,
+        String(playerEntityNetId),
+      );
 
       writeLog(
         `Welcome received. client_id=${clientId}, player_entity=${playerEntityNetId}`,
@@ -231,12 +273,18 @@ function handleServerMessage(message: ServerMessage): void {
     case 'Snapshot':
       lastServerTick = message.data.tick;
 
-      setText(tickStatus, String(lastServerTick));
+      setText(
+        tickStatus,
+        String(lastServerTick),
+      );
 
       entitiesByNetId.clear();
 
       for (const entity of message.data.entities) {
-        entitiesByNetId.set(entity.net_id, entity);
+        entitiesByNetId.set(
+          entity.net_id,
+          entity,
+        );
       }
 
       writeLog(
@@ -247,11 +295,15 @@ function handleServerMessage(message: ServerMessage): void {
       break;
 
     case 'Chat':
-      writeLog(`[${message.data.from}] ${message.data.text}`);
+      writeLog(
+        `[${message.data.from}] ${message.data.text}`,
+      );
       break;
 
     case 'Error':
-      writeLog(`Server error: ${message.data.message}`);
+      writeLog(
+        `Server error: ${message.data.message}`,
+      );
       break;
 
     default: {
@@ -265,41 +317,57 @@ function handleServerMessage(message: ServerMessage): void {
 }
 
 function updateRendererState(): void {
-  const rendererState: DebugRendererState = {
+  const rendererState: PixiRendererState = {
     serverTick: lastServerTick,
     playerEntityNetId,
     movement: inputController.getMovement(),
     entities: entitiesByNetId,
   };
 
-  debugRenderer.update(rendererState);
+  pixiRenderer.update(rendererState);
 }
 
 function connectToServer(): void {
-  if (connection.isConnected || connection.isConnecting) {
-    writeLog('Connection is already active.');
+  if (
+    connection.isConnected ||
+    connection.isConnecting
+  ) {
+    writeLog(
+      'Connection is already active.',
+    );
+
     return;
   }
 
   const serverUrl =
-    serverUrlInput?.value.trim() || DEFAULT_SERVER_URL;
+    serverUrlInput?.value.trim() ||
+    DEFAULT_SERVER_URL;
 
   writeLog(`Connecting to ${serverUrl} ...`);
 
-  const started = connection.connect(serverUrl);
+  const started =
+    connection.connect(serverUrl);
 
   if (!started) {
-    writeLog('Failed to start connection.');
+    writeLog(
+      'Failed to start connection.',
+    );
   }
 }
 
-connectButton?.addEventListener('click', () => {
-  connectToServer();
-  window.focus();
-});
+connectButton?.addEventListener(
+  'click',
+  () => {
+    connectToServer();
+    window.focus();
+  },
+);
 
-window.addEventListener('beforeunload', () => {
-  debugRenderer.stop();
-  inputController.destroy();
-  connection.disconnect();
-});
+window.addEventListener(
+  'beforeunload',
+  () => {
+    pixiRenderer.destroy();
+    inputController.destroy();
+    connection.disconnect();
+  },
+);

@@ -10,8 +10,8 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "pixi.js": "^8.19.0",
     "typescript": "latest",
     "vite": "latest"
-  },
-  "devDependencies": {}
+  }
 }
