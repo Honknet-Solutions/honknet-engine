@@ -1,19 +1,21 @@
 import './style.css';
 
+import {
+  DebugRenderer,
+  type DebugRendererState,
+} from './debugRenderer';
 import { getOrCreateGuestIdentityId } from './identity';
 import { InputController } from './input';
 import type {
   ClientMessage,
+  EntityNetId,
   EntitySnapshot,
-  NetPosition,
   ServerMessage,
-  Vec2,
 } from './protocol';
 
 const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
 const INPUT_SEND_INTERVAL_MS = 50;
-const WORLD_SCALE = 32;
 
 const app = document.querySelector<HTMLDivElement>('#app');
 
@@ -62,7 +64,7 @@ app.innerHTML = `
       <canvas id="viewport" width="800" height="480"></canvas>
 
       <p class="hint">
-        Click the page after connecting, then use WASD or arrow keys.
+        Use WASD or arrow keys after connecting.
       </p>
 
       <pre id="log">Client booted. Waiting for connection.</pre>
@@ -71,7 +73,9 @@ app.innerHTML = `
 `;
 
 const log = document.querySelector<HTMLPreElement>('#log');
-const button = document.querySelector<HTMLButtonElement>('#connect');
+const connectButton =
+  document.querySelector<HTMLButtonElement>('#connect');
+
 const serverUrlInput =
   document.querySelector<HTMLInputElement>('#server-url');
 
@@ -94,34 +98,30 @@ if (!canvasElement) {
   throw new Error('Missing #viewport canvas');
 }
 
-const canvasContextMaybe = canvasElement.getContext('2d');
-
-if (!canvasContextMaybe) {
-  throw new Error('Failed to create 2D canvas context');
-}
-
-const canvas: HTMLCanvasElement = canvasElement;
-const canvasContext: CanvasRenderingContext2D =
-  canvasContextMaybe;
-
 let socket: WebSocket | null = null;
 let clientId: string | null = null;
-let playerEntityNetId: number | null = null;
+let playerEntityNetId: EntityNetId | null = null;
 let lastServerTick: number | null = null;
 let inputSeq = 0;
 
-const entitiesByNetId = new Map<number, EntitySnapshot>();
+const entitiesByNetId = new Map<
+  EntityNetId,
+  EntitySnapshot
+>();
+
 const inputController = new InputController();
+const debugRenderer = new DebugRenderer(canvasElement);
 const playerIdentityId = getOrCreateGuestIdentityId();
 
 setText(identityStatus, playerIdentityId);
 writeLog(`Guest identity: ${playerIdentityId}`);
 
+debugRenderer.start();
+updateRendererState();
+
 window.setInterval(() => {
   sendCurrentInput();
 }, INPUT_SEND_INTERVAL_MS);
-
-window.requestAnimationFrame(renderFrame);
 
 function setText(
   element: HTMLElement | null,
@@ -163,10 +163,13 @@ function sendCurrentInput(): void {
     socket.readyState !== WebSocket.OPEN ||
     playerEntityNetId === null
   ) {
+    updateRendererState();
     return;
   }
 
   const movement = inputController.getMovement();
+
+  updateRendererState();
 
   if (movement.x === 0 && movement.y === 0) {
     return;
@@ -195,6 +198,8 @@ function handleServerMessage(message: ServerMessage): void {
       writeLog(
         `Welcome received. client_id=${clientId}, player_entity=${playerEntityNetId}`,
       );
+
+      updateRendererState();
       break;
 
     case 'Snapshot':
@@ -211,6 +216,8 @@ function handleServerMessage(message: ServerMessage): void {
       writeLog(
         `Snapshot tick=${message.data.tick}, entities=${message.data.entities.length}`,
       );
+
+      updateRendererState();
       break;
 
     case 'Chat':
@@ -231,9 +238,26 @@ function handleServerMessage(message: ServerMessage): void {
   }
 }
 
+function updateRendererState(): void {
+  const rendererState: DebugRendererState = {
+    serverTick: lastServerTick,
+    playerEntityNetId,
+    movement: inputController.getMovement(),
+    entities: entitiesByNetId,
+  };
+
+  debugRenderer.update(rendererState);
+}
+
 function connectToServer(): void {
-  if (socket && socket.readyState === WebSocket.OPEN) {
-    writeLog('Already connected.');
+  if (
+    socket &&
+    (
+      socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CONNECTING
+    )
+  ) {
+    writeLog('Connection is already active.');
     return;
   }
 
@@ -280,6 +304,9 @@ function connectToServer(): void {
 
     clientId = null;
     playerEntityNetId = null;
+    socket = null;
+
+    updateRendererState();
   });
 
   socket.addEventListener('error', () => {
@@ -289,152 +316,13 @@ function connectToServer(): void {
   });
 }
 
-function renderFrame(): void {
-  drawWorld();
-  window.requestAnimationFrame(renderFrame);
-}
-
-function drawWorld(): void {
-  canvasContext.clearRect(
-    0,
-    0,
-    canvas.width,
-    canvas.height,
-  );
-
-  drawGrid();
-
-  for (const entity of entitiesByNetId.values()) {
-    drawEntity(entity);
-  }
-
-  drawHud();
-}
-
-function drawGrid(): void {
-  const centerX = canvas.width / 2;
-  const centerY = canvas.height / 2;
-
-  canvasContext.lineWidth = 1;
-  canvasContext.strokeStyle =
-    'rgba(255, 255, 255, 0.08)';
-
-  for (
-    let x = centerX % WORLD_SCALE;
-    x < canvas.width;
-    x += WORLD_SCALE
-  ) {
-    canvasContext.beginPath();
-    canvasContext.moveTo(x, 0);
-    canvasContext.lineTo(x, canvas.height);
-    canvasContext.stroke();
-  }
-
-  for (
-    let y = centerY % WORLD_SCALE;
-    y < canvas.height;
-    y += WORLD_SCALE
-  ) {
-    canvasContext.beginPath();
-    canvasContext.moveTo(0, y);
-    canvasContext.lineTo(canvas.width, y);
-    canvasContext.stroke();
-  }
-
-  canvasContext.strokeStyle =
-    'rgba(255, 255, 255, 0.3)';
-
-  canvasContext.beginPath();
-  canvasContext.moveTo(centerX, 0);
-  canvasContext.lineTo(centerX, canvas.height);
-  canvasContext.stroke();
-
-  canvasContext.beginPath();
-  canvasContext.moveTo(0, centerY);
-  canvasContext.lineTo(canvas.width, centerY);
-  canvasContext.stroke();
-}
-
-function drawEntity(entity: EntitySnapshot): void {
-  const screenPosition = worldToScreen(entity.position);
-  const isPlayer = entity.net_id === playerEntityNetId;
-
-  canvasContext.beginPath();
-
-  canvasContext.arc(
-    screenPosition.x,
-    screenPosition.y,
-    isPlayer ? 12 : 10,
-    0,
-    Math.PI * 2,
-  );
-
-  canvasContext.fillStyle = isPlayer
-    ? '#7cffc4'
-    : '#ffcc66';
-
-  canvasContext.fill();
-
-  canvasContext.lineWidth = 2;
-
-  canvasContext.strokeStyle = isPlayer
-    ? '#eafff6'
-    : '#fff0c2';
-
-  canvasContext.stroke();
-
-  canvasContext.fillStyle = '#ffffff';
-  canvasContext.font = '12px monospace';
-  canvasContext.textAlign = 'center';
-
-  canvasContext.fillText(
-    `${entity.net_id}${isPlayer ? ' YOU' : ''}`,
-    screenPosition.x,
-    screenPosition.y - 18,
-  );
-}
-
-function drawHud(): void {
-  canvasContext.fillStyle = 'rgba(0, 0, 0, 0.45)';
-  canvasContext.fillRect(12, 12, 250, 72);
-
-  canvasContext.fillStyle = '#ffffff';
-  canvasContext.font = '13px monospace';
-  canvasContext.textAlign = 'left';
-
-  const movement = inputController.getMovement();
-
-  canvasContext.fillText(
-    `tick: ${lastServerTick ?? '-'}`,
-    24,
-    34,
-  );
-
-  canvasContext.fillText(
-    `entity: ${playerEntityNetId ?? '-'}`,
-    24,
-    54,
-  );
-
-  canvasContext.fillText(
-    `input: x=${movement.x}, y=${movement.y}`,
-    24,
-    74,
-  );
-}
-
-function worldToScreen(position: NetPosition): Vec2 {
-  return {
-    x: canvas.width / 2 + position.x * WORLD_SCALE,
-    y: canvas.height / 2 + position.y * WORLD_SCALE,
-  };
-}
-
-button?.addEventListener('click', () => {
+connectButton?.addEventListener('click', () => {
   connectToServer();
   window.focus();
 });
 
 window.addEventListener('beforeunload', () => {
+  debugRenderer.stop();
   inputController.destroy();
+  socket?.close();
 });

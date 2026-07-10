@@ -1,5 +1,15 @@
 import type { Vec2 } from './protocol';
 
+type MovementCode =
+  | 'KeyW'
+  | 'KeyA'
+  | 'KeyS'
+  | 'KeyD'
+  | 'ArrowUp'
+  | 'ArrowLeft'
+  | 'ArrowDown'
+  | 'ArrowRight';
+
 const MOVEMENT_CODES = new Set<string>([
   'KeyW',
   'KeyA',
@@ -11,8 +21,34 @@ const MOVEMENT_CODES = new Set<string>([
   'ArrowRight',
 ]);
 
+const KEY_TO_MOVEMENT_CODE = new Map<string, MovementCode>([
+  // English
+  ['w', 'KeyW'],
+  ['a', 'KeyA'],
+  ['s', 'KeyS'],
+  ['d', 'KeyD'],
+
+  // Russian
+  ['ц', 'KeyW'],
+  ['ф', 'KeyA'],
+  ['ы', 'KeyS'],
+  ['в', 'KeyD'],
+
+  // Ukrainian
+  ['ц', 'KeyW'],
+  ['ф', 'KeyA'],
+  ['і', 'KeyS'],
+  ['в', 'KeyD'],
+
+  // Arrow keys
+  ['arrowup', 'ArrowUp'],
+  ['arrowleft', 'ArrowLeft'],
+  ['arrowdown', 'ArrowDown'],
+  ['arrowright', 'ArrowRight'],
+]);
+
 export class InputController {
-  private readonly pressedCodes = new Set<string>();
+  private readonly pressedCodes = new Set<MovementCode>();
 
   public constructor() {
     window.addEventListener('keydown', this.handleKeyDown);
@@ -76,23 +112,31 @@ export class InputController {
   private readonly handleKeyDown = (
     event: KeyboardEvent,
   ): void => {
-    if (!MOVEMENT_CODES.has(event.code)) {
+    if (isTextInputTarget(event.target)) {
+      return;
+    }
+
+    const movementCode = resolveMovementCode(event);
+
+    if (!movementCode) {
       return;
     }
 
     event.preventDefault();
-    this.pressedCodes.add(event.code);
+    this.pressedCodes.add(movementCode);
   };
 
   private readonly handleKeyUp = (
     event: KeyboardEvent,
   ): void => {
-    if (!MOVEMENT_CODES.has(event.code)) {
+    const movementCode = resolveMovementCode(event);
+
+    if (!movementCode) {
       return;
     }
 
     event.preventDefault();
-    this.pressedCodes.delete(event.code);
+    this.pressedCodes.delete(movementCode);
   };
 
   private readonly handleVisibilityChange = (): void => {
@@ -104,4 +148,28 @@ export class InputController {
   private readonly clear = (): void => {
     this.pressedCodes.clear();
   };
+}
+
+function resolveMovementCode(
+  event: KeyboardEvent,
+): MovementCode | null {
+  if (MOVEMENT_CODES.has(event.code)) {
+    return event.code as MovementCode;
+  }
+
+  const normalizedKey = event.key.toLowerCase();
+
+  return KEY_TO_MOVEMENT_CODE.get(normalizedKey) ?? null;
+}
+
+function isTextInputTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable
+  );
 }
