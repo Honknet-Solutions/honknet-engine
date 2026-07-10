@@ -10,13 +10,16 @@ members = [
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Honknet Solutions"]
-repository = "https://github.com/https://github.com/Honknet-Solutions/space-station-15/space-station-15"
+repository = "https://github.com/Honknet-Solutions/space-station-15"
 
 [workspace.dependencies]
 anyhow = "1"
+futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.24"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 uuid = { version = "1", features = ["v4", "serde"] }
+

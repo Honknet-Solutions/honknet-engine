@@ -1,8 +1,15 @@
-use anyhow::Result;
-use ss15_protocol::{EntitySnapshot, ServerMessage, Vec2};
-use tracing::info;
+use std::net::SocketAddr;
+
+use anyhow::{Context, Result};
+use futures_util::{SinkExt, StreamExt};
+use ss15_protocol::{ClientMessage, EntitySnapshot, ServerMessage, Vec2};
+use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
 const TICK_RATE: u64 = 30;
+const LISTEN_ADDR: &str = "127.0.0.1:3015";
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -10,18 +17,118 @@ async fn main() -> Result<()> {
 
     info!("Starting Space Station 15 authoritative server");
     info!(tick_rate = TICK_RATE, "Server tick configured");
+    info!(listen_addr = LISTEN_ADDR, "Starting WebSocket transport");
 
-    let snapshot = ServerMessage::Snapshot {
+    let listener = TcpListener::bind(LISTEN_ADDR)
+        .await
+        .with_context(|| format!("failed to bind WebSocket listener on {LISTEN_ADDR}"))?;
+
+    loop {
+        let (stream, peer_addr) = listener
+            .accept()
+            .await
+            .context("failed to accept TCP connection")?;
+
+        tokio::spawn(async move {
+            if let Err(err) = handle_client(stream, peer_addr).await {
+                error!(%peer_addr, error = %err, "Client connection failed");
+            }
+        });
+    }
+}
+
+async fn handle_client(stream: TcpStream, peer_addr: SocketAddr) -> Result<()> {
+    info!(%peer_addr, "Client connected");
+
+    let websocket = accept_async(stream)
+        .await
+        .context("failed to accept WebSocket connection")?;
+    let (mut sender, mut receiver) = websocket.split();
+
+    let client_id = Uuid::new_v4();
+
+    while let Some(message) = receiver.next().await {
+        let message = message.context("failed to read WebSocket message")?;
+
+        match message {
+            Message::Text(text) => {
+                debug!(%peer_addr, %text, "Received client message");
+
+                let client_message = match serde_json::from_str::<ClientMessage>(&text) {
+                    Ok(client_message) => client_message,
+                    Err(err) => {
+                        warn!(%peer_addr, error = %err, "Rejected malformed client message");
+                        send_server_message(
+                            &mut sender,
+                            &ServerMessage::Error {
+                                message: "Malformed client message".to_string(),
+                            },
+                        )
+                        .await?;
+                        continue;
+                    }
+                };
+
+                match client_message {
+                    ClientMessage::Hello { client_version } => {
+                        info!(%peer_addr, %client_id, %client_version, "Client handshake accepted");
+
+                        send_server_message(&mut sender, &ServerMessage::Welcome { client_id })
+                            .await?;
+                        send_server_message(&mut sender, &debug_snapshot()).await?;
+                    }
+                    ClientMessage::Input { seq, movement } => {
+                        debug!(%peer_addr, seq, ?movement, "Received input message");
+                    }
+                    ClientMessage::Chat { text } => {
+                        send_server_message(
+                            &mut sender,
+                            &ServerMessage::Chat {
+                                from: "server".to_string(),
+                                text,
+                            },
+                        )
+                        .await?;
+                    }
+                    ClientMessage::Interact { target } => {
+                        debug!(%peer_addr, target, "Received interaction message");
+                    }
+                }
+            }
+            Message::Close(_) => {
+                info!(%peer_addr, "Client disconnected");
+                break;
+            }
+            Message::Ping(payload) => sender.send(Message::Pong(payload)).await?,
+            Message::Pong(_) => {}
+            Message::Binary(_) | Message::Frame(_) => {
+                warn!(%peer_addr, "Ignoring unsupported WebSocket message type");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn debug_snapshot() -> ServerMessage {
+    ServerMessage::Snapshot {
         tick: 0,
         entities: vec![EntitySnapshot {
             net_id: 1,
             prototype: "debug.player".to_string(),
             position: Vec2 { x: 0.0, y: 0.0 },
         }],
-    };
+    }
+}
 
-    info!(message = %serde_json::to_string(&snapshot)?, "Generated debug snapshot");
-    info!("Server scaffold is ready. WebSocket transport comes next.");
-
+async fn send_server_message(
+    sender: &mut futures_util::stream::SplitSink<
+        tokio_tungstenite::WebSocketStream<TcpStream>,
+        Message,
+    >,
+    message: &ServerMessage,
+) -> Result<()> {
+    let text = serde_json::to_string(message).context("failed to serialize server message")?;
+    sender.send(Message::Text(text)).await?;
     Ok(())
 }

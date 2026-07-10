@@ -27,10 +27,20 @@ pub enum ClientMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ServerMessage {
-    Welcome { client_id: ClientId },
-    Snapshot { tick: u64, entities: Vec<EntitySnapshot> },
-    Chat { from: String, text: String },
-    Error { message: String },
+    Welcome {
+        client_id: ClientId,
+    },
+    Snapshot {
+        tick: u64,
+        entities: Vec<EntitySnapshot>,
+    },
+    Chat {
+        from: String,
+        text: String,
+    },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
