@@ -29,6 +29,7 @@ export type ClientMessage =
       type: 'Input';
       data: {
         seq: number;
+        client_tick: number;
         movement: Vec2;
       };
     }
@@ -57,7 +58,10 @@ export type ServerMessage =
       type: 'Snapshot';
       data: {
         tick: number;
-        last_processed_input_seq: number | null;
+        last_processed_input_seq:
+          number | null;
+        last_processed_client_tick:
+          number | null;
         entities: EntitySnapshot[];
       };
     }

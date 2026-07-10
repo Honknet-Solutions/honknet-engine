@@ -35,6 +35,7 @@ pub enum PlayerConnectionState {
 #[derive(Debug, Clone)]
 pub struct PlayerInputState {
     pub last_sequence: Option<u32>,
+    pub last_client_tick: Option<u32>,
     pub movement: Vec2,
 }
 
@@ -49,6 +50,7 @@ impl PlayerInputState {
     pub fn new() -> Self {
         Self {
             last_sequence: None,
+            last_client_tick: None,
             movement: Vec2 { x: 0.0, y: 0.0 },
         }
     }
@@ -133,6 +135,7 @@ impl ServerState {
         &mut self,
         entity_net_id: EntityNetId,
         sequence: u32,
+        client_tick: u32,
         movement: Vec2,
     ) -> InputUpdateResult {
         let entity_exists = self
@@ -153,20 +156,23 @@ impl ServerState {
         }
 
         input_state.last_sequence = Some(sequence);
+        input_state.last_client_tick = Some(client_tick);
         input_state.movement = sanitize_movement(movement);
 
         InputUpdateResult::Accepted
     }
 
     pub fn snapshot_message_for(&self, entity_net_id: EntityNetId) -> ServerMessage {
-        let last_processed_input_seq = self
-            .player_inputs
-            .get(&entity_net_id)
-            .and_then(|input_state| input_state.last_sequence);
+        let input_state = self.player_inputs.get(&entity_net_id);
+
+        let last_processed_input_seq = input_state.and_then(|state| state.last_sequence);
+
+        let last_processed_client_tick = input_state.and_then(|state| state.last_client_tick);
 
         ServerMessage::Snapshot {
             tick: self.tick,
             last_processed_input_seq,
+            last_processed_client_tick,
             entities: self.entities.clone(),
         }
     }
@@ -258,6 +264,6 @@ mod tests {
 
     #[test]
     fn wrapped_sequence_is_accepted() {
-        assert!(is_sequence_newer(0, u32::MAX));
+        assert!(is_sequence_newer(0, u32::MAX,));
     }
 }

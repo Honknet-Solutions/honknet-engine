@@ -141,7 +141,8 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
                         continue;
                     };
 
-                    let state = state.read().await;
+                    let state =
+                        state.read().await;
 
                     let snapshot =
                         state.snapshot_message_for(
@@ -276,11 +277,16 @@ async fn handle_client_message(
             Ok(Some((identity_id, entity_net_id)))
         }
 
-        ClientMessage::Input { seq, movement } => {
+        ClientMessage::Input {
+            seq,
+            client_tick,
+            movement,
+        } => {
             let Some(entity_net_id) = current_entity_net_id else {
                 warn!(
                     %peer_addr,
                     seq,
+                    client_tick,
                     "Rejected input before handshake"
                 );
 
@@ -297,7 +303,8 @@ async fn handle_client_message(
 
             let mut state_write = state.write().await;
 
-            let update_result = state_write.set_movement_input(entity_net_id, seq, movement);
+            let update_result =
+                state_write.set_movement_input(entity_net_id, seq, client_tick, movement);
 
             drop(state_write);
 
@@ -306,6 +313,7 @@ async fn handle_client_message(
                     debug!(
                         %peer_addr,
                         seq,
+                        client_tick,
                         entity_net_id,
                         ?movement,
                         "Accepted movement input"
@@ -316,6 +324,7 @@ async fn handle_client_message(
                     debug!(
                         %peer_addr,
                         seq,
+                        client_tick,
                         entity_net_id,
                         ?movement,
                         "Rejected stale movement input"
@@ -326,6 +335,7 @@ async fn handle_client_message(
                     warn!(
                         %peer_addr,
                         seq,
+                        client_tick,
                         entity_net_id,
                         ?movement,
                         "Rejected movement input because entity was missing"

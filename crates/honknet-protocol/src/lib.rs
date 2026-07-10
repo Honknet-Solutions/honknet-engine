@@ -30,13 +30,17 @@ pub enum ClientMessage {
         client_version: String,
         identity_id: PlayerIdentityId,
     },
+
     Input {
         seq: u32,
+        client_tick: u32,
         movement: Vec2,
     },
+
     Chat {
         text: String,
     },
+
     Interact {
         target: EntityNetId,
     },
@@ -49,15 +53,19 @@ pub enum ServerMessage {
         client_id: ClientId,
         entity_net_id: EntityNetId,
     },
+
     Snapshot {
         tick: u64,
         last_processed_input_seq: Option<u32>,
+        last_processed_client_tick: Option<u32>,
         entities: Vec<EntitySnapshot>,
     },
+
     Chat {
         from: String,
         text: String,
     },
+
     Error {
         message: String,
     },

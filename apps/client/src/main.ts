@@ -18,8 +18,6 @@ import type {
 const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
 
-const INPUT_SEND_INTERVAL_MS = 50;
-
 const CLIENT_SIMULATION_TICK_RATE = 30;
 const CLIENT_SIMULATION_DELTA_SECONDS =
   1 / CLIENT_SIMULATION_TICK_RATE;
@@ -35,6 +33,7 @@ const RECONCILIATION_SNAP_DISTANCE = 2.0;
 
 type PendingInput = {
   sequence: number;
+  clientTick: number;
   movement: Vec2;
   sentAtMilliseconds: number;
 };
@@ -145,8 +144,10 @@ if (!viewportElement) {
 
 let clientId: string | null = null;
 let playerEntityNetId: EntityNetId | null = null;
+
 let lastServerTick: number | null = null;
 let lastProcessedInputSeq: number | null = null;
+let lastProcessedClientTick: number | null = null;
 
 let inputSeq = 0;
 let lastSentMovement: Vec2 | null = null;
@@ -160,7 +161,6 @@ let pendingPositionCorrection: Vec2 = {
 };
 
 let clientSimulationTick = 0;
-
 let simulationAccumulatorSeconds = 0;
 
 let lastFrameMilliseconds =
@@ -209,7 +209,11 @@ const connection = new ClientConnection({
 
     clientId = null;
     playerEntityNetId = null;
+
+    lastServerTick = null;
     lastProcessedInputSeq = null;
+    lastProcessedClientTick = null;
+
     lastSentMovement = null;
     predictedPlayerPosition = null;
 
@@ -219,6 +223,7 @@ const connection = new ClientConnection({
     };
 
     pendingInputs.length = 0;
+    entitiesByNetId.clear();
 
     resetClientSimulationClock();
 
@@ -228,6 +233,7 @@ const connection = new ClientConnection({
     );
 
     setText(entityStatus, '-');
+    setText(tickStatus, '-');
 
     updateRendererState();
   },
@@ -250,11 +256,6 @@ writeLog(
 
 updateRendererState();
 
-window.setInterval(
-  sendCurrentInput,
-  INPUT_SEND_INTERVAL_MS,
-);
-
 simulationFrameRequestId =
   requestAnimationFrame(
     updateSimulationFrame,
@@ -271,7 +272,9 @@ function setText(
   element.textContent = value;
 }
 
-function writeLog(message: string): void {
+function writeLog(
+  message: string,
+): void {
   if (!log) {
     return;
   }
@@ -289,69 +292,20 @@ function writeLog(message: string): void {
     .join('\n');
 }
 
-function sendCurrentInput(): void {
-  const rawMovement =
-    inputController.getMovement();
-
-  if (
-    !connection.isConnected ||
-    playerEntityNetId === null
-  ) {
-    return;
-  }
-
-  if (
-    lastSentMovement !== null &&
-    rawMovement.x === lastSentMovement.x &&
-    rawMovement.y === lastSentMovement.y
-  ) {
-    return;
-  }
-
-  inputSeq =
-    (inputSeq + 1) >>> 0;
-
-  const normalizedMovement =
-    normalizeMovement(rawMovement);
-
-  const sent = connection.send({
-    type: 'Input',
-    data: {
-      seq: inputSeq,
-      movement: normalizedMovement,
-    },
-  });
-
-  if (!sent) {
-    return;
-  }
-
-  lastSentMovement = {
-    x: rawMovement.x,
-    y: rawMovement.y,
-  };
-
-  pendingInputs.push({
-    sequence: inputSeq,
-    movement: normalizedMovement,
-    sentAtMilliseconds:
-      performance.now(),
-  });
-}
-
 function updateSimulationFrame(
   currentMilliseconds: number,
 ): void {
-  const frameDeltaSeconds = Math.min(
-    Math.max(
-      (
-        currentMilliseconds -
-        lastFrameMilliseconds
-      ) / 1000,
-      0,
-    ),
-    MAX_FRAME_DELTA_SECONDS,
-  );
+  const frameDeltaSeconds =
+    Math.min(
+      Math.max(
+        (
+          currentMilliseconds -
+          lastFrameMilliseconds
+        ) / 1000,
+        0,
+      ),
+      MAX_FRAME_DELTA_SECONDS,
+    );
 
   lastFrameMilliseconds =
     currentMilliseconds;
@@ -400,12 +354,76 @@ function runClientSimulationTick(): void {
   clientSimulationTick =
     (clientSimulationTick + 1) >>> 0;
 
+  const movement =
+    normalizeMovement(
+      inputController.getMovement(),
+    );
+
+  sendMovementInputForTick(
+    movement,
+    clientSimulationTick,
+  );
+
   applyLocalPrediction(
+    movement,
     CLIENT_SIMULATION_DELTA_SECONDS,
   );
 }
 
+function sendMovementInputForTick(
+  movement: Vec2,
+  clientTick: number,
+): void {
+  if (
+    !connection.isConnected ||
+    playerEntityNetId === null
+  ) {
+    return;
+  }
+
+  if (
+    lastSentMovement !== null &&
+    movement.x === lastSentMovement.x &&
+    movement.y === lastSentMovement.y
+  ) {
+    return;
+  }
+
+  inputSeq =
+    (inputSeq + 1) >>> 0;
+
+  const sent = connection.send({
+    type: 'Input',
+    data: {
+      seq: inputSeq,
+      client_tick: clientTick,
+      movement,
+    },
+  });
+
+  if (!sent) {
+    return;
+  }
+
+  lastSentMovement = {
+    x: movement.x,
+    y: movement.y,
+  };
+
+  pendingInputs.push({
+    sequence: inputSeq,
+    clientTick,
+    movement: {
+      x: movement.x,
+      y: movement.y,
+    },
+    sentAtMilliseconds:
+      performance.now(),
+  });
+}
+
 function applyLocalPrediction(
+  movement: Vec2,
   deltaSeconds: number,
 ): void {
   if (
@@ -415,10 +433,6 @@ function applyLocalPrediction(
   ) {
     return;
   }
-
-  const movement = normalizeMovement(
-    inputController.getMovement(),
-  );
 
   predictedPlayerPosition.x +=
     movement.x *
@@ -434,7 +448,9 @@ function applyLocalPrediction(
 function applyPredictionCorrection(
   deltaSeconds: number,
 ): void {
-  if (predictedPlayerPosition === null) {
+  if (
+    predictedPlayerPosition === null
+  ) {
     return;
   }
 
@@ -509,7 +525,8 @@ function handleServerMessage(
       break;
 
     default: {
-      const unreachable: never = message;
+      const unreachable: never =
+        message;
 
       writeLog(
         `Unknown server message: ${JSON.stringify(unreachable)}`,
@@ -530,7 +547,10 @@ function handleWelcome(
   playerEntityNetId =
     message.data.entity_net_id;
 
+  lastServerTick = null;
   lastProcessedInputSeq = null;
+  lastProcessedClientTick = null;
+
   lastSentMovement = null;
   predictedPlayerPosition = null;
 
@@ -553,6 +573,8 @@ function handleWelcome(
     String(playerEntityNetId),
   );
 
+  setText(tickStatus, '-');
+
   writeLog(
     `Welcome received. client_id=${clientId}, player_entity=${playerEntityNetId}`,
   );
@@ -570,7 +592,12 @@ function handleSnapshot(
     message.data.tick;
 
   lastProcessedInputSeq =
-    message.data.last_processed_input_seq;
+    message.data
+      .last_processed_input_seq;
+
+  lastProcessedClientTick =
+    message.data
+      .last_processed_client_tick;
 
   setText(
     tickStatus,
@@ -600,14 +627,16 @@ function handleSnapshot(
   }
 
   writeLog(
-    `Snapshot serverTick=${message.data.tick}, clientTick=${clientSimulationTick}, ack=${lastProcessedInputSeq ?? 'none'}, pending=${pendingInputs.length}, entities=${message.data.entities.length}`,
+    `Snapshot serverTick=${message.data.tick}, clientTick=${clientSimulationTick}, ackSeq=${lastProcessedInputSeq ?? 'none'}, ackClientTick=${lastProcessedClientTick ?? 'none'}, pending=${pendingInputs.length}, entities=${message.data.entities.length}`,
   );
 
   updateRendererState();
 }
 
 function reconcilePredictedPlayerPosition(): void {
-  if (playerEntityNetId === null) {
+  if (
+    playerEntityNetId === null
+  ) {
     return;
   }
 
@@ -620,7 +649,9 @@ function reconcilePredictedPlayerPosition(): void {
     return;
   }
 
-  if (predictedPlayerPosition === null) {
+  if (
+    predictedPlayerPosition === null
+  ) {
     predictedPlayerPosition = {
       x: serverPlayer.position.x,
       y: serverPlayer.position.y,
@@ -647,7 +678,10 @@ function reconcilePredictedPlayerPosition(): void {
     predictedPlayerPosition.y;
 
   const errorDistance =
-    Math.hypot(errorX, errorY);
+    Math.hypot(
+      errorX,
+      errorY,
+    );
 
   if (
     errorDistance <=
@@ -692,7 +726,9 @@ function reconcilePredictedPlayerPosition(): void {
 function removeAcknowledgedInputs(
   acknowledgedSequence: number,
 ): void {
-  while (pendingInputs.length > 0) {
+  while (
+    pendingInputs.length > 0
+  ) {
     const pendingInput =
       pendingInputs[0];
 
@@ -743,8 +779,12 @@ function normalizeMovement(
   movement: Vec2,
 ): Vec2 {
   if (
-    !Number.isFinite(movement.x) ||
-    !Number.isFinite(movement.y)
+    !Number.isFinite(
+      movement.x,
+    ) ||
+    !Number.isFinite(
+      movement.y,
+    )
   ) {
     return {
       x: 0,
@@ -753,8 +793,10 @@ function normalizeMovement(
   }
 
   const lengthSquared =
-    movement.x * movement.x +
-    movement.y * movement.y;
+    movement.x *
+      movement.x +
+    movement.y *
+      movement.y;
 
   if (lengthSquared <= 1) {
     return {
@@ -775,6 +817,7 @@ function normalizeMovement(
 function resetClientSimulationClock(): void {
   clientSimulationTick = 0;
   simulationAccumulatorSeconds = 0;
+
   lastFrameMilliseconds =
     performance.now();
 }
