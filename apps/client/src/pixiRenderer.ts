@@ -2,6 +2,7 @@ import {
   Application,
   Container,
   Graphics,
+  Ticker,
 } from 'pixi.js';
 
 import type {
@@ -12,6 +13,7 @@ import type {
 } from './protocol';
 
 const WORLD_SCALE = 32;
+const INTERPOLATION_SPEED = 14;
 
 export type PixiRendererState = {
   serverTick: number | null;
@@ -24,6 +26,8 @@ type EntityView = {
   container: Container;
   body: Graphics;
   isPlayer: boolean;
+  renderedPosition: NetPosition;
+  targetPosition: NetPosition;
 };
 
 export class PixiRenderer {
@@ -31,6 +35,7 @@ export class PixiRenderer {
 
   private readonly gridContainer = new Container();
   private readonly entityContainer = new Container();
+  private readonly gridGraphics = new Graphics();
 
   private readonly entityViews = new Map<
     EntityNetId,
@@ -44,12 +49,19 @@ export class PixiRenderer {
     entities: new Map(),
   };
 
-  private cameraPosition: NetPosition = {
+  private cameraRenderedPosition: NetPosition = {
     x: 0,
     y: 0,
     z: 0,
   };
 
+  private cameraTargetPosition: NetPosition = {
+    x: 0,
+    y: 0,
+    z: 0,
+  };
+
+  private cameraInitialized = false;
   private initialized = false;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -79,10 +91,14 @@ export class PixiRenderer {
 
     this.hostElement.replaceChildren(canvas);
 
+    this.gridContainer.addChild(this.gridGraphics);
+
     this.application.stage.addChild(
       this.gridContainer,
       this.entityContainer,
     );
+
+    this.application.ticker.add(this.updateFrame);
 
     this.resizeObserver = new ResizeObserver(() => {
       this.resizeToHost();
@@ -103,13 +119,15 @@ export class PixiRenderer {
       return;
     }
 
-    this.updateCameraPosition();
+    this.updateCameraTarget();
     this.synchronizeScene();
   }
 
   public destroy(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+
+    this.application.ticker.remove(this.updateFrame);
 
     for (const entityView of this.entityViews.values()) {
       entityView.container.destroy({
@@ -119,20 +137,37 @@ export class PixiRenderer {
 
     this.entityViews.clear();
 
-    this.gridContainer.destroy({
-      children: true,
-    });
-
-    this.entityContainer.destroy({
-      children: true,
-    });
-
     this.application.destroy({
       removeView: true,
     });
 
     this.initialized = false;
   }
+
+  private readonly updateFrame = (
+    ticker: Ticker,
+  ): void => {
+    if (!this.initialized) {
+      return;
+    }
+
+    const deltaSeconds = Math.min(
+      ticker.deltaMS / 1000,
+      0.1,
+    );
+
+    const interpolationFactor =
+      1 -
+      Math.exp(
+        -INTERPOLATION_SPEED * deltaSeconds,
+      );
+
+    this.interpolateCamera(interpolationFactor);
+    this.interpolateEntities(interpolationFactor);
+
+    this.updateEntityTransforms();
+    this.redrawGrid();
+  };
 
   private resizeToHost(): void {
     if (!this.initialized) {
@@ -154,18 +189,17 @@ export class PixiRenderer {
       height,
     );
 
+    this.updateEntityTransforms();
     this.redrawGrid();
-    this.updateEntityViews();
   }
 
   private synchronizeScene(): void {
     this.removeMissingEntityViews();
     this.createMissingEntityViews();
-    this.updateEntityViews();
-    this.redrawGrid();
+    this.updateEntityTargets();
   }
 
-  private updateCameraPosition(): void {
+  private updateCameraTarget(): void {
     const playerEntityNetId =
       this.state.playerEntityNetId;
 
@@ -180,11 +214,19 @@ export class PixiRenderer {
       return;
     }
 
-    this.cameraPosition = {
+    this.cameraTargetPosition = {
       x: playerEntity.position.x,
       y: playerEntity.position.y,
       z: playerEntity.position.z,
     };
+
+    if (!this.cameraInitialized) {
+      this.cameraRenderedPosition = {
+        ...this.cameraTargetPosition,
+      };
+
+      this.cameraInitialized = true;
+    }
   }
 
   private removeMissingEntityViews(): void {
@@ -219,7 +261,7 @@ export class PixiRenderer {
         this.state.playerEntityNetId;
 
       const entityView =
-        this.createEntityView(isPlayer);
+        this.createEntityView(entity, isPlayer);
 
       this.entityViews.set(
         entity.net_id,
@@ -232,9 +274,7 @@ export class PixiRenderer {
     }
   }
 
-  private updateEntityViews(): void {
-    const viewportSize = this.getViewportSize();
-
+  private updateEntityTargets(): void {
     for (const entity of this.state.entities.values()) {
       const entityView = this.entityViews.get(
         entity.net_id,
@@ -257,9 +297,65 @@ export class PixiRenderer {
         entityView.isPlayer = isPlayer;
       }
 
+      entityView.targetPosition = {
+        x: entity.position.x,
+        y: entity.position.y,
+        z: entity.position.z,
+      };
+    }
+  }
+
+  private interpolateCamera(
+    interpolationFactor: number,
+  ): void {
+    if (!this.cameraInitialized) {
+      return;
+    }
+
+    this.cameraRenderedPosition.x = lerp(
+      this.cameraRenderedPosition.x,
+      this.cameraTargetPosition.x,
+      interpolationFactor,
+    );
+
+    this.cameraRenderedPosition.y = lerp(
+      this.cameraRenderedPosition.y,
+      this.cameraTargetPosition.y,
+      interpolationFactor,
+    );
+
+    this.cameraRenderedPosition.z =
+      this.cameraTargetPosition.z;
+  }
+
+  private interpolateEntities(
+    interpolationFactor: number,
+  ): void {
+    for (const entityView of this.entityViews.values()) {
+      entityView.renderedPosition.x = lerp(
+        entityView.renderedPosition.x,
+        entityView.targetPosition.x,
+        interpolationFactor,
+      );
+
+      entityView.renderedPosition.y = lerp(
+        entityView.renderedPosition.y,
+        entityView.targetPosition.y,
+        interpolationFactor,
+      );
+
+      entityView.renderedPosition.z =
+        entityView.targetPosition.z;
+    }
+  }
+
+  private updateEntityTransforms(): void {
+    const viewportSize = this.getViewportSize();
+
+    for (const entityView of this.entityViews.values()) {
       const screenPosition =
         this.worldToScreen(
-          entity.position,
+          entityView.renderedPosition,
           viewportSize,
         );
 
@@ -269,12 +365,13 @@ export class PixiRenderer {
       );
 
       entityView.container.visible =
-        entity.position.z ===
-        this.cameraPosition.z;
+        entityView.renderedPosition.z ===
+        this.cameraRenderedPosition.z;
     }
   }
 
   private createEntityView(
+    entity: EntitySnapshot,
     isPlayer: boolean,
   ): EntityView {
     const container = new Container();
@@ -283,10 +380,22 @@ export class PixiRenderer {
     this.redrawEntityBody(body, isPlayer);
     container.addChild(body);
 
+    const initialPosition: NetPosition = {
+      x: entity.position.x,
+      y: entity.position.y,
+      z: entity.position.z,
+    };
+
     return {
       container,
       body,
       isPlayer,
+      renderedPosition: {
+        ...initialPosition,
+      },
+      targetPosition: {
+        ...initialPosition,
+      },
     };
   }
 
@@ -326,39 +435,41 @@ export class PixiRenderer {
   }
 
   private redrawGrid(): void {
-    this.gridContainer.removeChildren();
-
-    const grid = new Graphics();
     const viewportSize = this.getViewportSize();
 
     const cameraPixelX =
-      this.cameraPosition.x * WORLD_SCALE;
+      this.cameraRenderedPosition.x *
+      WORLD_SCALE;
 
     const cameraPixelY =
-      this.cameraPosition.y * WORLD_SCALE;
+      this.cameraRenderedPosition.y *
+      WORLD_SCALE;
 
     const centerX = viewportSize.x / 2;
     const centerY = viewportSize.y / 2;
 
-    const horizontalOffset =
-      positiveModulo(
-        centerX - cameraPixelX,
-        WORLD_SCALE,
-      );
+    const horizontalOffset = positiveModulo(
+      centerX - cameraPixelX,
+      WORLD_SCALE,
+    );
 
-    const verticalOffset =
-      positiveModulo(
-        centerY - cameraPixelY,
-        WORLD_SCALE,
-      );
+    const verticalOffset = positiveModulo(
+      centerY - cameraPixelY,
+      WORLD_SCALE,
+    );
+
+    this.gridGraphics.clear();
 
     for (
       let x = horizontalOffset;
       x <= viewportSize.x;
       x += WORLD_SCALE
     ) {
-      grid.moveTo(x, 0);
-      grid.lineTo(x, viewportSize.y);
+      this.gridGraphics.moveTo(x, 0);
+      this.gridGraphics.lineTo(
+        x,
+        viewportSize.y,
+      );
     }
 
     for (
@@ -366,11 +477,14 @@ export class PixiRenderer {
       y <= viewportSize.y;
       y += WORLD_SCALE
     ) {
-      grid.moveTo(0, y);
-      grid.lineTo(viewportSize.x, y);
+      this.gridGraphics.moveTo(0, y);
+      this.gridGraphics.lineTo(
+        viewportSize.x,
+        y,
+      );
     }
 
-    grid.stroke({
+    this.gridGraphics.stroke({
       color: 0xffffff,
       width: 1,
       alpha: 0.08,
@@ -381,7 +495,7 @@ export class PixiRenderer {
         {
           x: 0,
           y: 0,
-          z: this.cameraPosition.z,
+          z: this.cameraRenderedPosition.z,
         },
         viewportSize,
       );
@@ -390,8 +504,12 @@ export class PixiRenderer {
       worldOriginScreen.x >= 0 &&
       worldOriginScreen.x <= viewportSize.x
     ) {
-      grid.moveTo(worldOriginScreen.x, 0);
-      grid.lineTo(
+      this.gridGraphics.moveTo(
+        worldOriginScreen.x,
+        0,
+      );
+
+      this.gridGraphics.lineTo(
         worldOriginScreen.x,
         viewportSize.y,
       );
@@ -401,20 +519,22 @@ export class PixiRenderer {
       worldOriginScreen.y >= 0 &&
       worldOriginScreen.y <= viewportSize.y
     ) {
-      grid.moveTo(0, worldOriginScreen.y);
-      grid.lineTo(
+      this.gridGraphics.moveTo(
+        0,
+        worldOriginScreen.y,
+      );
+
+      this.gridGraphics.lineTo(
         viewportSize.x,
         worldOriginScreen.y,
       );
     }
 
-    grid.stroke({
+    this.gridGraphics.stroke({
       color: 0xffffff,
       width: 1,
       alpha: 0.3,
     });
-
-    this.gridContainer.addChild(grid);
   }
 
   private worldToScreen(
@@ -426,7 +546,7 @@ export class PixiRenderer {
         viewportSize.x / 2 +
         (
           position.x -
-          this.cameraPosition.x
+          this.cameraRenderedPosition.x
         ) *
           WORLD_SCALE,
 
@@ -434,7 +554,7 @@ export class PixiRenderer {
         viewportSize.y / 2 +
         (
           position.y -
-          this.cameraPosition.y
+          this.cameraRenderedPosition.y
         ) *
           WORLD_SCALE,
     };
@@ -451,6 +571,14 @@ export class PixiRenderer {
         this.application.renderer.resolution,
     };
   }
+}
+
+function lerp(
+  current: number,
+  target: number,
+  factor: number,
+): number {
+  return current + (target - current) * factor;
 }
 
 function positiveModulo(

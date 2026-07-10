@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::server_state::SharedServerState;
 
-const SNAPSHOT_INTERVAL: Duration = Duration::from_millis(250);
+const SNAPSHOT_INTERVAL: Duration = Duration::from_millis(50);
 
 pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerState) -> Result<()> {
     info!(%peer_addr, "Client connected");
@@ -221,6 +221,7 @@ async fn handle_client_message(
             let mut state_write = state.write().await;
             let applied = state_write.set_movement_input(entity_net_id, movement);
             drop(state_write);
+
             if applied {
                 debug!(
                     %peer_addr,
