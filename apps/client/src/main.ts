@@ -1,5 +1,6 @@
 import './style.css';
 
+import { ClientConnection } from './connection';
 import {
   DebugRenderer,
   type DebugRendererState,
@@ -7,7 +8,6 @@ import {
 import { getOrCreateGuestIdentityId } from './identity';
 import { InputController } from './input';
 import type {
-  ClientMessage,
   EntityNetId,
   EntitySnapshot,
   ServerMessage,
@@ -28,6 +28,7 @@ app.innerHTML = `
     <section class="panel">
       <p class="eyebrow">Honknet Solutions</p>
       <h1>Space Station 15</h1>
+
       <p>
         Browser-first modular 2D multiplayer immersive simulation framework.
       </p>
@@ -73,6 +74,7 @@ app.innerHTML = `
 `;
 
 const log = document.querySelector<HTMLPreElement>('#log');
+
 const connectButton =
   document.querySelector<HTMLButtonElement>('#connect');
 
@@ -98,7 +100,6 @@ if (!canvasElement) {
   throw new Error('Missing #viewport canvas');
 }
 
-let socket: WebSocket | null = null;
 let clientId: string | null = null;
 let playerEntityNetId: EntityNetId | null = null;
 let lastServerTick: number | null = null;
@@ -112,6 +113,40 @@ const entitiesByNetId = new Map<
 const inputController = new InputController();
 const debugRenderer = new DebugRenderer(canvasElement);
 const playerIdentityId = getOrCreateGuestIdentityId();
+
+const connection = new ClientConnection({
+  onOpen: () => {
+    writeLog('WebSocket opened. Sending Hello.');
+
+    connection.send({
+      type: 'Hello',
+      data: {
+        client_version: CLIENT_VERSION,
+        identity_id: playerIdentityId,
+      },
+    });
+  },
+
+  onMessage: (message) => {
+    handleServerMessage(message);
+  },
+
+  onClose: () => {
+    writeLog('WebSocket closed.');
+
+    clientId = null;
+    playerEntityNetId = null;
+
+    setText(clientStatus, 'disconnected');
+    setText(entityStatus, '-');
+
+    updateRendererState();
+  },
+
+  onError: (message) => {
+    writeLog(message);
+  },
+});
 
 setText(identityStatus, playerIdentityId);
 writeLog(`Guest identity: ${playerIdentityId}`);
@@ -149,18 +184,9 @@ function writeLog(message: string): void {
   log.textContent = nextLines.slice(-18).join('\n');
 }
 
-function sendClientMessage(message: ClientMessage): void {
-  if (!socket || socket.readyState !== WebSocket.OPEN) {
-    return;
-  }
-
-  socket.send(JSON.stringify(message));
-}
-
 function sendCurrentInput(): void {
   if (
-    !socket ||
-    socket.readyState !== WebSocket.OPEN ||
+    !connection.isConnected ||
     playerEntityNetId === null
   ) {
     updateRendererState();
@@ -177,7 +203,7 @@ function sendCurrentInput(): void {
 
   inputSeq += 1;
 
-  sendClientMessage({
+  connection.send({
     type: 'Input',
     data: {
       seq: inputSeq,
@@ -250,13 +276,7 @@ function updateRendererState(): void {
 }
 
 function connectToServer(): void {
-  if (
-    socket &&
-    (
-      socket.readyState === WebSocket.OPEN ||
-      socket.readyState === WebSocket.CONNECTING
-    )
-  ) {
+  if (connection.isConnected || connection.isConnecting) {
     writeLog('Connection is already active.');
     return;
   }
@@ -266,54 +286,11 @@ function connectToServer(): void {
 
   writeLog(`Connecting to ${serverUrl} ...`);
 
-  socket = new WebSocket(serverUrl);
+  const started = connection.connect(serverUrl);
 
-  socket.addEventListener('open', () => {
-    writeLog('WebSocket opened. Sending Hello.');
-
-    sendClientMessage({
-      type: 'Hello',
-      data: {
-        client_version: CLIENT_VERSION,
-        identity_id: playerIdentityId,
-      },
-    });
-  });
-
-  socket.addEventListener(
-    'message',
-    (event: MessageEvent<string>) => {
-      try {
-        const serverMessage = JSON.parse(
-          event.data,
-        ) as ServerMessage;
-
-        handleServerMessage(serverMessage);
-      } catch (error) {
-        writeLog(
-          `Failed to parse server message: ${String(error)}`,
-        );
-      }
-    },
-  );
-
-  socket.addEventListener('close', () => {
-    writeLog('WebSocket closed.');
-
-    setText(clientStatus, 'disconnected');
-
-    clientId = null;
-    playerEntityNetId = null;
-    socket = null;
-
-    updateRendererState();
-  });
-
-  socket.addEventListener('error', () => {
-    writeLog(
-      'WebSocket error. Is the Rust server running?',
-    );
-  });
+  if (!started) {
+    writeLog('Failed to start connection.');
+  }
 }
 
 connectButton?.addEventListener('click', () => {
@@ -324,5 +301,5 @@ connectButton?.addEventListener('click', () => {
 window.addEventListener('beforeunload', () => {
   debugRenderer.stop();
   inputController.destroy();
-  socket?.close();
+  connection.disconnect();
 });
