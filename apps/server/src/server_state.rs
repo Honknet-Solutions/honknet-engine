@@ -27,6 +27,10 @@ impl ServerState {
         }
     }
 
+    pub fn advance_tick(&mut self) {
+        self.tick = self.tick.saturating_add(1);
+    }
+
     pub fn snapshot_message(&self) -> ServerMessage {
         ServerMessage::Snapshot {
             tick: self.tick,

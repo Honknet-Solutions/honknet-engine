@@ -1,5 +1,6 @@
 mod client_session;
 mod server_state;
+mod tick_loop;
 mod transport;
 
 use anyhow::Result;
@@ -16,5 +17,12 @@ async fn main() -> Result<()> {
 
     let state = server_state::new_shared_debug_state();
 
-    transport::run_websocket_listener(transport::DEFAULT_LISTEN_ADDR, state).await
+    tokio::select! {
+        result = tick_loop::run(state.clone(), TICK_RATE) => {
+            result
+        }
+        result = transport::run_websocket_listener(transport::DEFAULT_LISTEN_ADDR, state) => {
+            result
+        }
+    }
 }
