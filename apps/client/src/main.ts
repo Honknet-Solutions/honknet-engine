@@ -1,45 +1,12 @@
 import './style.css';
 
-type Vec2 = {
-  x: number;
-  y: number;
-};
-
-type NetPosition = {
-  x: number;
-  y: number;
-  z: number;
-};
-
-type EntitySnapshot = {
-  net_id: number;
-  prototype: string;
-  position: NetPosition;
-};
-
-type ClientMessage =
-  | {
-      type: 'Hello';
-      data: {
-        client_version: string;
-        identity_id: string;
-      };
-    }
-  | { type: 'Input'; data: { seq: number; movement: Vec2 } }
-  | { type: 'Chat'; data: { text: string } }
-  | { type: 'Interact'; data: { target: number } };
-
-type ServerMessage =
-  | {
-      type: 'Welcome';
-      data: {
-        client_id: string;
-        entity_net_id: number;
-      };
-    }
-  | { type: 'Snapshot'; data: { tick: number; entities: EntitySnapshot[] } }
-  | { type: 'Chat'; data: { from: string; text: string } }
-  | { type: 'Error'; data: { message: string } };
+import type {
+  ClientMessage,
+  EntitySnapshot,
+  NetPosition,
+  ServerMessage,
+  Vec2,
+} from './protocol';
 
 const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
