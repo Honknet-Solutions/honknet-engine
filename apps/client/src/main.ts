@@ -19,8 +19,15 @@ const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
 
 const INPUT_SEND_INTERVAL_MS = 50;
+
+const CLIENT_SIMULATION_TICK_RATE = 30;
+const CLIENT_SIMULATION_DELTA_SECONDS =
+  1 / CLIENT_SIMULATION_TICK_RATE;
+
+const MAX_FRAME_DELTA_SECONDS = 0.25;
+const MAX_SIMULATION_STEPS_PER_FRAME = 8;
+
 const PLAYER_MOVE_SPEED = 4.0;
-const MAX_PREDICTION_DELTA_SECONDS = 0.1;
 
 const RECONCILIATION_SPEED = 12.0;
 const RECONCILIATION_IGNORE_DISTANCE = 0.0025;
@@ -152,10 +159,14 @@ let pendingPositionCorrection: Vec2 = {
   y: 0,
 };
 
-let lastPredictionFrameMilliseconds =
+let clientSimulationTick = 0;
+
+let simulationAccumulatorSeconds = 0;
+
+let lastFrameMilliseconds =
   performance.now();
 
-let predictionFrameRequestId:
+let simulationFrameRequestId:
   number | null = null;
 
 const pendingInputs: PendingInput[] = [];
@@ -209,6 +220,8 @@ const connection = new ClientConnection({
 
     pendingInputs.length = 0;
 
+    resetClientSimulationClock();
+
     setText(
       clientStatus,
       'disconnected',
@@ -242,9 +255,9 @@ window.setInterval(
   INPUT_SEND_INTERVAL_MS,
 );
 
-predictionFrameRequestId =
+simulationFrameRequestId =
   requestAnimationFrame(
-    updatePredictionFrame,
+    updateSimulationFrame,
   );
 
 function setText(
@@ -277,7 +290,7 @@ function writeLog(message: string): void {
 }
 
 function sendCurrentInput(): void {
-  const movement =
+  const rawMovement =
     inputController.getMovement();
 
   if (
@@ -289,8 +302,8 @@ function sendCurrentInput(): void {
 
   if (
     lastSentMovement !== null &&
-    movement.x === lastSentMovement.x &&
-    movement.y === lastSentMovement.y
+    rawMovement.x === lastSentMovement.x &&
+    rawMovement.y === lastSentMovement.y
   ) {
     return;
   }
@@ -299,7 +312,7 @@ function sendCurrentInput(): void {
     (inputSeq + 1) >>> 0;
 
   const normalizedMovement =
-    normalizeMovement(movement);
+    normalizeMovement(rawMovement);
 
   const sent = connection.send({
     type: 'Input',
@@ -314,8 +327,8 @@ function sendCurrentInput(): void {
   }
 
   lastSentMovement = {
-    x: movement.x,
-    y: movement.y,
+    x: rawMovement.x,
+    y: rawMovement.y,
   };
 
   pendingInputs.push({
@@ -326,32 +339,70 @@ function sendCurrentInput(): void {
   });
 }
 
-function updatePredictionFrame(
+function updateSimulationFrame(
   currentMilliseconds: number,
 ): void {
-  const elapsedMilliseconds =
-    currentMilliseconds -
-    lastPredictionFrameMilliseconds;
-
-  lastPredictionFrameMilliseconds =
-    currentMilliseconds;
-
-  const deltaSeconds = Math.min(
+  const frameDeltaSeconds = Math.min(
     Math.max(
-      elapsedMilliseconds / 1000,
+      (
+        currentMilliseconds -
+        lastFrameMilliseconds
+      ) / 1000,
       0,
     ),
-    MAX_PREDICTION_DELTA_SECONDS,
+    MAX_FRAME_DELTA_SECONDS,
   );
 
-  applyLocalPrediction(deltaSeconds);
-  applyPredictionCorrection(deltaSeconds);
+  lastFrameMilliseconds =
+    currentMilliseconds;
+
+  simulationAccumulatorSeconds +=
+    frameDeltaSeconds;
+
+  let completedSimulationSteps = 0;
+
+  while (
+    simulationAccumulatorSeconds >=
+      CLIENT_SIMULATION_DELTA_SECONDS &&
+    completedSimulationSteps <
+      MAX_SIMULATION_STEPS_PER_FRAME
+  ) {
+    runClientSimulationTick();
+
+    simulationAccumulatorSeconds -=
+      CLIENT_SIMULATION_DELTA_SECONDS;
+
+    completedSimulationSteps += 1;
+  }
+
+  if (
+    completedSimulationSteps >=
+      MAX_SIMULATION_STEPS_PER_FRAME &&
+    simulationAccumulatorSeconds >=
+      CLIENT_SIMULATION_DELTA_SECONDS
+  ) {
+    simulationAccumulatorSeconds = 0;
+  }
+
+  applyPredictionCorrection(
+    frameDeltaSeconds,
+  );
+
   updateRendererState();
 
-  predictionFrameRequestId =
+  simulationFrameRequestId =
     requestAnimationFrame(
-      updatePredictionFrame,
+      updateSimulationFrame,
     );
+}
+
+function runClientSimulationTick(): void {
+  clientSimulationTick =
+    (clientSimulationTick + 1) >>> 0;
+
+  applyLocalPrediction(
+    CLIENT_SIMULATION_DELTA_SECONDS,
+  );
 }
 
 function applyLocalPrediction(
@@ -438,38 +489,7 @@ function handleServerMessage(
 ): void {
   switch (message.type) {
     case 'Welcome':
-      clientId =
-        message.data.client_id;
-
-      playerEntityNetId =
-        message.data.entity_net_id;
-
-      lastProcessedInputSeq = null;
-      lastSentMovement = null;
-      predictedPlayerPosition = null;
-
-      pendingPositionCorrection = {
-        x: 0,
-        y: 0,
-      };
-
-      pendingInputs.length = 0;
-
-      setText(
-        clientStatus,
-        clientId,
-      );
-
-      setText(
-        entityStatus,
-        String(playerEntityNetId),
-      );
-
-      writeLog(
-        `Welcome received. client_id=${clientId}, player_entity=${playerEntityNetId}`,
-      );
-
-      updateRendererState();
+      handleWelcome(message);
       break;
 
     case 'Snapshot':
@@ -496,6 +516,48 @@ function handleServerMessage(
       );
     }
   }
+}
+
+function handleWelcome(
+  message: Extract<
+    ServerMessage,
+    { type: 'Welcome' }
+  >,
+): void {
+  clientId =
+    message.data.client_id;
+
+  playerEntityNetId =
+    message.data.entity_net_id;
+
+  lastProcessedInputSeq = null;
+  lastSentMovement = null;
+  predictedPlayerPosition = null;
+
+  pendingPositionCorrection = {
+    x: 0,
+    y: 0,
+  };
+
+  pendingInputs.length = 0;
+
+  resetClientSimulationClock();
+
+  setText(
+    clientStatus,
+    clientId,
+  );
+
+  setText(
+    entityStatus,
+    String(playerEntityNetId),
+  );
+
+  writeLog(
+    `Welcome received. client_id=${clientId}, player_entity=${playerEntityNetId}`,
+  );
+
+  updateRendererState();
 }
 
 function handleSnapshot(
@@ -538,7 +600,7 @@ function handleSnapshot(
   }
 
   writeLog(
-    `Snapshot tick=${message.data.tick}, ack=${lastProcessedInputSeq ?? 'none'}, pending=${pendingInputs.length}, entities=${message.data.entities.length}`,
+    `Snapshot serverTick=${message.data.tick}, clientTick=${clientSimulationTick}, ack=${lastProcessedInputSeq ?? 'none'}, pending=${pendingInputs.length}, entities=${message.data.entities.length}`,
   );
 
   updateRendererState();
@@ -710,6 +772,13 @@ function normalizeMovement(
   };
 }
 
+function resetClientSimulationClock(): void {
+  clientSimulationTick = 0;
+  simulationAccumulatorSeconds = 0;
+  lastFrameMilliseconds =
+    performance.now();
+}
+
 function updateRendererState(): void {
   const rendererState:
     PixiRendererState = {
@@ -768,10 +837,10 @@ window.addEventListener(
   'beforeunload',
   () => {
     if (
-      predictionFrameRequestId !== null
+      simulationFrameRequestId !== null
     ) {
       cancelAnimationFrame(
-        predictionFrameRequestId,
+        simulationFrameRequestId,
       );
     }
 
