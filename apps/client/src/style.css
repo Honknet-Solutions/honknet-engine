@@ -1,0 +1,57 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #e9eef5;
+  background: #080b10;
+}
+
+body {
+  margin: 0;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(75, 133, 255, 0.18), transparent 32rem),
+    radial-gradient(circle at 80% 70%, rgba(255, 75, 180, 0.12), transparent 28rem),
+    #080b10;
+}
+
+.panel {
+  width: min(720px, calc(100vw - 48px));
+  padding: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(12, 18, 28, 0.82);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8bb4ff;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: 48px;
+}
+
+button {
+  margin: 18px 0;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+pre {
+  min-height: 120px;
+  padding: 16px;
+  overflow: auto;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.35);
+}

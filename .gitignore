@@ -1,0 +1,17 @@
+# Rust
+/target/
+Cargo.lock
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

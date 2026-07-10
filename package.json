@@ -1,0 +1,13 @@
+{
+  "name": "space-station-15",
+  "private": true,
+  "workspaces": [
+    "apps/client",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:client": "npm --workspace apps/client run dev",
+    "build:client": "npm --workspace apps/client run build",
+    "typecheck": "npm --workspace apps/client run typecheck"
+  }
+}

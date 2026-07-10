@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/server",
+    "crates/ss15-core",
+    "crates/ss15-protocol",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Open Station"]
+repository = "https://github.com/Open-Station/space-station-15"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = { version = "1", features = ["v4", "serde"] }
