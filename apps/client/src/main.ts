@@ -11,15 +11,14 @@ import type {
   EntityNetId,
   EntitySnapshot,
   ServerMessage,
+  Vec2,
 } from './protocol';
 
 const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
 const INPUT_SEND_INTERVAL_MS = 50;
 
-const app = document.querySelector<HTMLDivElement>(
-  '#app',
-);
+const app = document.querySelector<HTMLDivElement>('#app');
 
 if (!app) {
   throw new Error('Missing #app root element');
@@ -125,6 +124,11 @@ let playerEntityNetId: EntityNetId | null = null;
 let lastServerTick: number | null = null;
 let inputSeq = 0;
 
+let lastSentMovement: Vec2 = {
+  x: 0,
+  y: 0,
+};
+
 const entitiesByNetId = new Map<
   EntityNetId,
   EntitySnapshot
@@ -163,6 +167,11 @@ const connection = new ClientConnection({
 
     clientId = null;
     playerEntityNetId = null;
+
+    lastSentMovement = {
+      x: 0,
+      y: 0,
+    };
 
     setText(clientStatus, 'disconnected');
     setText(entityStatus, '-');
@@ -216,35 +225,43 @@ function writeLog(message: string): void {
 }
 
 function sendCurrentInput(): void {
-  if (
-    !connection.isConnected ||
-    playerEntityNetId === null
-  ) {
-    updateRendererState();
-    return;
-  }
-
   const movement =
     inputController.getMovement();
 
   updateRendererState();
 
   if (
-    movement.x === 0 &&
-    movement.y === 0
+    !connection.isConnected ||
+    playerEntityNetId === null
+  ) {
+    return;
+  }
+
+  if (
+    movement.x === lastSentMovement.x &&
+    movement.y === lastSentMovement.y
   ) {
     return;
   }
 
   inputSeq += 1;
 
-  connection.send({
+  const sent = connection.send({
     type: 'Input',
     data: {
       seq: inputSeq,
       movement,
     },
   });
+
+  if (!sent) {
+    return;
+  }
+
+  lastSentMovement = {
+    x: movement.x,
+    y: movement.y,
+  };
 }
 
 function handleServerMessage(
@@ -255,6 +272,11 @@ function handleServerMessage(
       clientId = message.data.client_id;
       playerEntityNetId =
         message.data.entity_net_id;
+
+      lastSentMovement = {
+        x: Number.NaN,
+        y: Number.NaN,
+      };
 
       setText(clientStatus, clientId);
 

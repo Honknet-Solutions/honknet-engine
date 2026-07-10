@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use ss15_protocol::{
     ClientId, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId, ServerMessage, Vec2,
@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 
 pub type SharedServerState = Arc<RwLock<ServerState>>;
 
-const DEBUG_MOVE_STEP: f32 = 0.5;
+const PLAYER_MOVE_SPEED: f32 = 4.0;
 
 #[derive(Debug, Clone)]
 pub struct ServerState {
@@ -15,6 +15,7 @@ pub struct ServerState {
     next_entity_net_id: EntityNetId,
     entities: Vec<EntitySnapshot>,
     players: Vec<PlayerRecord>,
+    movement_inputs: HashMap<EntityNetId, Vec2>,
 }
 
 #[derive(Debug, Clone)]
@@ -38,11 +39,13 @@ impl ServerState {
             next_entity_net_id: 1,
             entities: Vec::new(),
             players: Vec::new(),
+            movement_inputs: HashMap::new(),
         }
     }
 
-    pub fn advance_tick(&mut self) {
+    pub fn advance_tick(&mut self, delta_seconds: f32) {
         self.tick = self.tick.saturating_add(1);
+        self.apply_movement(delta_seconds);
     }
 
     pub fn connect_player(
@@ -57,6 +60,10 @@ impl ServerState {
         {
             player.client_id = Some(client_id);
             player.connection_state = PlayerConnectionState::Online;
+
+            self.movement_inputs
+                .insert(player.entity_net_id, Vec2 { x: 0.0, y: 0.0 });
+
             return player.entity_net_id;
         }
 
@@ -68,6 +75,9 @@ impl ServerState {
             entity_net_id,
             connection_state: PlayerConnectionState::Online,
         });
+
+        self.movement_inputs
+            .insert(entity_net_id, Vec2 { x: 0.0, y: 0.0 });
 
         entity_net_id
     }
@@ -84,22 +94,24 @@ impl ServerState {
         player.client_id = None;
         player.connection_state = PlayerConnectionState::Disconnected;
 
+        self.movement_inputs
+            .insert(player.entity_net_id, Vec2 { x: 0.0, y: 0.0 });
+
         Some(player.entity_net_id)
     }
 
-    pub fn apply_movement_input(&mut self, entity_net_id: EntityNetId, movement: Vec2) -> bool {
-        let Some(entity) = self
+    pub fn set_movement_input(&mut self, entity_net_id: EntityNetId, movement: Vec2) -> bool {
+        let entity_exists = self
             .entities
-            .iter_mut()
-            .find(|entity| entity.net_id == entity_net_id)
-        else {
+            .iter()
+            .any(|entity| entity.net_id == entity_net_id);
+
+        if !entity_exists {
             return false;
-        };
+        }
 
-        let movement = sanitize_movement(movement);
-
-        entity.position.x += movement.x * DEBUG_MOVE_STEP;
-        entity.position.y += movement.y * DEBUG_MOVE_STEP;
+        self.movement_inputs
+            .insert(entity_net_id, sanitize_movement(movement));
 
         true
     }
@@ -108,6 +120,17 @@ impl ServerState {
         ServerMessage::Snapshot {
             tick: self.tick,
             entities: self.entities.clone(),
+        }
+    }
+
+    fn apply_movement(&mut self, delta_seconds: f32) {
+        for entity in &mut self.entities {
+            let Some(movement) = self.movement_inputs.get(&entity.net_id) else {
+                continue;
+            };
+
+            entity.position.x += movement.x * PLAYER_MOVE_SPEED * delta_seconds;
+            entity.position.y += movement.y * PLAYER_MOVE_SPEED * delta_seconds;
         }
     }
 

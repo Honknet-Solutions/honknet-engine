@@ -219,9 +219,8 @@ async fn handle_client_message(
             };
 
             let mut state_write = state.write().await;
-            let applied = state_write.apply_movement_input(entity_net_id, movement);
+            let applied = state_write.set_movement_input(entity_net_id, movement);
             drop(state_write);
-
             if applied {
                 debug!(
                     %peer_addr,
