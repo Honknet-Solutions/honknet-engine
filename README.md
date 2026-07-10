@@ -27,8 +27,8 @@ apps/
   client/        Browser client
   server/        Rust authoritative server
 crates/
-  ss15-core/     Core world/ECS primitives
-  ss15-protocol/ Shared network message definitions
+  honknet-core/     Core world/ECS primitives
+  honknet-protocol/ Shared network message definitions
 docs/            Architecture and design docs
 modules/         Optional gameplay modules
 ```

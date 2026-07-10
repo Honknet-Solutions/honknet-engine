@@ -468,15 +468,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "ss15-core"
+name = "honknet-core"
 version = "0.1.0"
 dependencies = [
  "serde",
- "ss15-protocol",
+ "honknet-protocol",
 ]
 
 [[package]]
-name = "ss15-protocol"
+name = "honknet-protocol"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -484,15 +484,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "ss15-server"
+name = "honknet-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "futures-util",
  "serde",
  "serde_json",
- "ss15-core",
- "ss15-protocol",
+ "honknet-core",
+ "honknet-protocol",
  "tokio",
  "tokio-tungstenite",
  "tracing",

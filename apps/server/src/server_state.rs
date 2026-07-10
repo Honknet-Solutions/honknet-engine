@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use ss15_protocol::{
+use honknet_protocol::{
     ClientId, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId, ServerMessage, Vec2,
 };
 use tokio::sync::RwLock;

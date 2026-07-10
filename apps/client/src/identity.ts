@@ -1,5 +1,5 @@
 const GUEST_IDENTITY_STORAGE_KEY =
-  'ss15.guestIdentityId';
+  'honknet.guestIdentityId';
 
 export function getOrCreateGuestIdentityId(): string {
   const existingIdentityId = localStorage.getItem(

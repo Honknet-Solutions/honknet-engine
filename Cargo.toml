@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "apps/server",
-    "crates/ss15-core",
-    "crates/ss15-protocol",
+    "crates/honknet-core",
+    "crates/honknet-protocol",
 ]
 
 [workspace.package]

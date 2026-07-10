@@ -426,19 +426,19 @@ space-station-15/
     showcase-night-city/
 
   crates/
-    ss15-core/
-    ss15-ecs/
-    ss15-world/
-    ss15-map/
-    ss15-physics/
-    ss15-net/
-    ss15-replication/
-    ss15-protocol/
-    ss15-persistence/
-    ss15-permissions/
-    ss15-modules/
-    ss15-scripting/
-    ss15-tools/
+    honknet-core/
+    honknet-ecs/
+    honknet-world/
+    honknet-map/
+    honknet-physics/
+    honknet-net/
+    honknet-replication/
+    honknet-protocol/
+    honknet-persistence/
+    honknet-permissions/
+    honknet-modules/
+    honknet-scripting/
+    honknet-tools/
 
   packages/
     protocol-ts/

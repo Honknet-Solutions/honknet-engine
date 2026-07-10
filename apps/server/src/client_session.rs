@@ -2,7 +2,7 @@ use std::{net::SocketAddr, time::Duration};
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use ss15_protocol::{ClientMessage, EntityNetId, PlayerIdentityId, ServerMessage};
+use honknet_protocol::{ClientMessage, EntityNetId, PlayerIdentityId, ServerMessage};
 use tokio::{net::TcpStream, time};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info, warn};
