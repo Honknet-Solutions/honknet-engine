@@ -8,9 +8,9 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::debug_world;
+use crate::server_state::SharedServerState;
 
-pub async fn run(stream: TcpStream, peer_addr: SocketAddr) -> Result<()> {
+pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerState) -> Result<()> {
     info!(%peer_addr, "Client connected");
 
     let websocket = accept_async(stream)
@@ -44,7 +44,8 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr) -> Result<()> {
                     }
                 };
 
-                handle_client_message(&mut sender, peer_addr, client_id, client_message).await?;
+                handle_client_message(&mut sender, peer_addr, client_id, client_message, &state)
+                    .await?;
             }
             Message::Close(_) => {
                 info!(%peer_addr, "Client disconnected");
@@ -71,13 +72,16 @@ async fn handle_client_message(
     peer_addr: SocketAddr,
     client_id: Uuid,
     message: ClientMessage,
+    state: &SharedServerState,
 ) -> Result<()> {
     match message {
         ClientMessage::Hello { client_version } => {
             info!(%peer_addr, %client_id, %client_version, "Client handshake accepted");
 
             send_server_message(sender, &ServerMessage::Welcome { client_id }).await?;
-            send_server_message(sender, &debug_world::initial_snapshot()).await?;
+
+            let state = state.read().await;
+            send_server_message(sender, &state.snapshot_message()).await?;
         }
         ClientMessage::Input { seq, movement } => {
             debug!(%peer_addr, seq, ?movement, "Received input message");

@@ -1,5 +1,5 @@
 mod client_session;
-mod debug_world;
+mod server_state;
 mod transport;
 
 use anyhow::Result;
@@ -14,5 +14,7 @@ async fn main() -> Result<()> {
     info!("Starting Space Station 15 authoritative server");
     info!(tick_rate = TICK_RATE, "Server tick configured");
 
-    transport::run_websocket_listener(transport::DEFAULT_LISTEN_ADDR).await
+    let state = server_state::new_shared_debug_state();
+
+    transport::run_websocket_listener(transport::DEFAULT_LISTEN_ADDR, state).await
 }
