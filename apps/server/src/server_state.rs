@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use honknet_protocol::{
     ClientId, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId, ServerMessage, Vec2,
@@ -8,6 +12,8 @@ use tokio::sync::RwLock;
 pub type SharedServerState = Arc<RwLock<ServerState>>;
 
 const PLAYER_MOVE_SPEED: f32 = 4.0;
+
+const PLAYER_INPUT_TIMEOUT: Duration = Duration::from_millis(1500);
 
 #[derive(Debug, Clone)]
 pub struct ServerState {
@@ -37,6 +43,7 @@ pub struct PlayerInputState {
     pub last_sequence: Option<u32>,
     pub last_client_tick: Option<u32>,
     pub movement: Vec2,
+    pub last_received_at: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +59,7 @@ impl PlayerInputState {
             last_sequence: None,
             last_client_tick: None,
             movement: Vec2 { x: 0.0, y: 0.0 },
+            last_received_at: None,
         }
     }
 }
@@ -75,6 +83,8 @@ impl ServerState {
 
     pub fn advance_tick(&mut self, delta_seconds: f32) {
         self.tick = self.tick.saturating_add(1);
+
+        self.clear_stale_movement();
         self.apply_movement(delta_seconds);
     }
 
@@ -89,6 +99,7 @@ impl ServerState {
             .find(|player| player.identity_id == identity_id)
         {
             player.client_id = Some(client_id);
+
             player.connection_state = PlayerConnectionState::Online;
 
             self.player_inputs
@@ -122,10 +133,13 @@ impl ServerState {
             .find(|player| &player.identity_id == identity_id)?;
 
         player.client_id = None;
+
         player.connection_state = PlayerConnectionState::Disconnected;
 
         if let Some(input_state) = self.player_inputs.get_mut(&player.entity_net_id) {
             input_state.movement = Vec2 { x: 0.0, y: 0.0 };
+
+            input_state.last_received_at = None;
         }
 
         Some(player.entity_net_id)
@@ -156,8 +170,12 @@ impl ServerState {
         }
 
         input_state.last_sequence = Some(sequence);
+
         input_state.last_client_tick = Some(client_tick);
+
         input_state.movement = sanitize_movement(movement);
+
+        input_state.last_received_at = Some(Instant::now());
 
         InputUpdateResult::Accepted
     }
@@ -174,6 +192,24 @@ impl ServerState {
             last_processed_input_seq,
             last_processed_client_tick,
             entities: self.entities.clone(),
+        }
+    }
+
+    fn clear_stale_movement(&mut self) {
+        let now = Instant::now();
+
+        for input_state in self.player_inputs.values_mut() {
+            let Some(last_received_at) = input_state.last_received_at else {
+                continue;
+            };
+
+            if now.duration_since(last_received_at) < PLAYER_INPUT_TIMEOUT {
+                continue;
+            }
+
+            input_state.movement = Vec2 { x: 0.0, y: 0.0 };
+
+            input_state.last_received_at = None;
         }
     }
 
@@ -249,21 +285,21 @@ mod tests {
 
     #[test]
     fn newer_sequence_is_accepted() {
-        assert!(is_sequence_newer(11, 10));
+        assert!(is_sequence_newer(11, 10),);
     }
 
     #[test]
     fn duplicate_sequence_is_rejected() {
-        assert!(!is_sequence_newer(10, 10));
+        assert!(!is_sequence_newer(10, 10),);
     }
 
     #[test]
     fn older_sequence_is_rejected() {
-        assert!(!is_sequence_newer(9, 10));
+        assert!(!is_sequence_newer(9, 10),);
     }
 
     #[test]
     fn wrapped_sequence_is_accepted() {
-        assert!(is_sequence_newer(0, u32::MAX,));
+        assert!(is_sequence_newer(0, u32::MAX,),);
     }
 }

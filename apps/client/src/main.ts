@@ -22,6 +22,8 @@ const CLIENT_SIMULATION_TICK_RATE = 30;
 const CLIENT_SIMULATION_DELTA_SECONDS =
   1 / CLIENT_SIMULATION_TICK_RATE;
 
+const INPUT_HEARTBEAT_INTERVAL_TICKS = 15;
+
 const MAX_FRAME_DELTA_SECONDS = 0.25;
 const MAX_SIMULATION_STEPS_PER_FRAME = 8;
 
@@ -151,6 +153,7 @@ let lastProcessedClientTick: number | null = null;
 
 let inputSeq = 0;
 let lastSentMovement: Vec2 | null = null;
+let lastInputSendClientTick: number | null = null;
 
 let predictedPlayerPosition:
   NetPosition | null = null;
@@ -215,6 +218,7 @@ const connection = new ClientConnection({
     lastProcessedClientTick = null;
 
     lastSentMovement = null;
+    lastInputSendClientTick = null;
     predictedPlayerPosition = null;
 
     pendingPositionCorrection = {
@@ -381,10 +385,22 @@ function sendMovementInputForTick(
     return;
   }
 
+  const movementChanged =
+    lastSentMovement === null ||
+    movement.x !== lastSentMovement.x ||
+    movement.y !== lastSentMovement.y;
+
+  const heartbeatRequired =
+    lastInputSendClientTick === null ||
+    hasReachedTickInterval(
+      clientTick,
+      lastInputSendClientTick,
+      INPUT_HEARTBEAT_INTERVAL_TICKS,
+    );
+
   if (
-    lastSentMovement !== null &&
-    movement.x === lastSentMovement.x &&
-    movement.y === lastSentMovement.y
+    !movementChanged &&
+    !heartbeatRequired
   ) {
     return;
   }
@@ -409,6 +425,9 @@ function sendMovementInputForTick(
     x: movement.x,
     y: movement.y,
   };
+
+  lastInputSendClientTick =
+    clientTick;
 
   pendingInputs.push({
     sequence: inputSeq,
@@ -552,6 +571,7 @@ function handleWelcome(
   lastProcessedClientTick = null;
 
   lastSentMovement = null;
+  lastInputSendClientTick = null;
   predictedPlayerPosition = null;
 
   pendingPositionCorrection = {
@@ -773,6 +793,17 @@ function isSequenceNewer(
     difference !== 0 &&
     difference < 0x80000000
   );
+}
+
+function hasReachedTickInterval(
+  currentTick: number,
+  previousTick: number,
+  intervalTicks: number,
+): boolean {
+  const elapsedTicks =
+    (currentTick - previousTick) >>> 0;
+
+  return elapsedTicks >= intervalTicks;
 }
 
 function normalizeMovement(
