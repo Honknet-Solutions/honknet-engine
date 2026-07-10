@@ -1,7 +1,7 @@
 //! Setting-agnostic core primitives for Space Station 15.
 
-use serde::{Deserialize, Serialize};
 use honknet_protocol::{EntityNetId, Vec2};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Transform {

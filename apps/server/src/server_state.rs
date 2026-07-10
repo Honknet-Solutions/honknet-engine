@@ -15,7 +15,7 @@ pub struct ServerState {
     next_entity_net_id: EntityNetId,
     entities: Vec<EntitySnapshot>,
     players: Vec<PlayerRecord>,
-    movement_inputs: HashMap<EntityNetId, Vec2>,
+    player_inputs: HashMap<EntityNetId, PlayerInputState>,
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +32,34 @@ pub enum PlayerConnectionState {
     Disconnected,
 }
 
+#[derive(Debug, Clone)]
+pub struct PlayerInputState {
+    pub last_sequence: Option<u32>,
+    pub movement: Vec2,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InputUpdateResult {
+    Accepted,
+    Stale,
+    EntityMissing,
+}
+
+impl PlayerInputState {
+    pub fn new() -> Self {
+        Self {
+            last_sequence: None,
+            movement: Vec2 { x: 0.0, y: 0.0 },
+        }
+    }
+}
+
+impl Default for PlayerInputState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ServerState {
     pub fn new_debug() -> Self {
         Self {
@@ -39,7 +67,7 @@ impl ServerState {
             next_entity_net_id: 1,
             entities: Vec::new(),
             players: Vec::new(),
-            movement_inputs: HashMap::new(),
+            player_inputs: HashMap::new(),
         }
     }
 
@@ -61,8 +89,8 @@ impl ServerState {
             player.client_id = Some(client_id);
             player.connection_state = PlayerConnectionState::Online;
 
-            self.movement_inputs
-                .insert(player.entity_net_id, Vec2 { x: 0.0, y: 0.0 });
+            self.player_inputs
+                .insert(player.entity_net_id, PlayerInputState::new());
 
             return player.entity_net_id;
         }
@@ -76,8 +104,8 @@ impl ServerState {
             connection_state: PlayerConnectionState::Online,
         });
 
-        self.movement_inputs
-            .insert(entity_net_id, Vec2 { x: 0.0, y: 0.0 });
+        self.player_inputs
+            .insert(entity_net_id, PlayerInputState::new());
 
         entity_net_id
     }
@@ -94,26 +122,40 @@ impl ServerState {
         player.client_id = None;
         player.connection_state = PlayerConnectionState::Disconnected;
 
-        self.movement_inputs
-            .insert(player.entity_net_id, Vec2 { x: 0.0, y: 0.0 });
+        if let Some(input_state) = self.player_inputs.get_mut(&player.entity_net_id) {
+            input_state.movement = Vec2 { x: 0.0, y: 0.0 };
+        }
 
         Some(player.entity_net_id)
     }
 
-    pub fn set_movement_input(&mut self, entity_net_id: EntityNetId, movement: Vec2) -> bool {
+    pub fn set_movement_input(
+        &mut self,
+        entity_net_id: EntityNetId,
+        sequence: u32,
+        movement: Vec2,
+    ) -> InputUpdateResult {
         let entity_exists = self
             .entities
             .iter()
             .any(|entity| entity.net_id == entity_net_id);
 
         if !entity_exists {
-            return false;
+            return InputUpdateResult::EntityMissing;
         }
 
-        self.movement_inputs
-            .insert(entity_net_id, sanitize_movement(movement));
+        let input_state = self.player_inputs.entry(entity_net_id).or_default();
 
-        true
+        if let Some(last_sequence) = input_state.last_sequence {
+            if !is_sequence_newer(sequence, last_sequence) {
+                return InputUpdateResult::Stale;
+            }
+        }
+
+        input_state.last_sequence = Some(sequence);
+        input_state.movement = sanitize_movement(movement);
+
+        InputUpdateResult::Accepted
     }
 
     pub fn snapshot_message(&self) -> ServerMessage {
@@ -125,12 +167,13 @@ impl ServerState {
 
     fn apply_movement(&mut self, delta_seconds: f32) {
         for entity in &mut self.entities {
-            let Some(movement) = self.movement_inputs.get(&entity.net_id) else {
+            let Some(input_state) = self.player_inputs.get(&entity.net_id) else {
                 continue;
             };
 
-            entity.position.x += movement.x * PLAYER_MOVE_SPEED * delta_seconds;
-            entity.position.y += movement.y * PLAYER_MOVE_SPEED * delta_seconds;
+            entity.position.x += input_state.movement.x * PLAYER_MOVE_SPEED * delta_seconds;
+
+            entity.position.y += input_state.movement.y * PLAYER_MOVE_SPEED * delta_seconds;
         }
     }
 
@@ -152,7 +195,9 @@ impl ServerState {
 
     fn allocate_entity_net_id(&mut self) -> EntityNetId {
         let entity_net_id = self.next_entity_net_id;
+
         self.next_entity_net_id = self.next_entity_net_id.saturating_add(1);
+
         entity_net_id
     }
 }
@@ -176,6 +221,37 @@ fn sanitize_movement(movement: Vec2) -> Vec2 {
     }
 }
 
+fn is_sequence_newer(candidate: u32, current: u32) -> bool {
+    let difference = candidate.wrapping_sub(current);
+
+    difference != 0 && difference < (1_u32 << 31)
+}
+
 pub fn new_shared_debug_state() -> SharedServerState {
     Arc::new(RwLock::new(ServerState::new_debug()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_sequence_newer;
+
+    #[test]
+    fn newer_sequence_is_accepted() {
+        assert!(is_sequence_newer(11, 10));
+    }
+
+    #[test]
+    fn duplicate_sequence_is_rejected() {
+        assert!(!is_sequence_newer(10, 10));
+    }
+
+    #[test]
+    fn older_sequence_is_rejected() {
+        assert!(!is_sequence_newer(9, 10));
+    }
+
+    #[test]
+    fn wrapped_sequence_is_accepted() {
+        assert!(is_sequence_newer(0, u32::MAX));
+    }
 }

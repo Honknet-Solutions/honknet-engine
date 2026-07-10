@@ -8,7 +8,7 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::server_state::SharedServerState;
+use crate::server_state::{InputUpdateResult, SharedServerState};
 
 const SNAPSHOT_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -20,9 +20,11 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
         .context("failed to accept WebSocket connection")?;
 
     let (mut sender, mut receiver) = websocket.split();
+
     let client_id = Uuid::new_v4();
 
     let mut player_identity_id: Option<PlayerIdentityId> = None;
+
     let mut player_entity_net_id: Option<EntityNetId> = None;
 
     let mut snapshot_interval = time::interval(SNAPSHOT_INTERVAL);
@@ -32,34 +34,59 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
             tokio::select! {
                 maybe_message = receiver.next() => {
                     let Some(message) = maybe_message else {
-                        info!(%peer_addr, "Client disconnected");
+                        info!(
+                            %peer_addr,
+                            "Client disconnected"
+                        );
+
                         break;
                     };
 
-                    let message = message.context("failed to read WebSocket message")?;
+                    let message = message.context(
+                        "failed to read WebSocket message",
+                    )?;
 
                     match message {
                         Message::Text(text) => {
-                            debug!(%peer_addr, %text, "Received client message");
+                            debug!(
+                                %peer_addr,
+                                %text,
+                                "Received client message"
+                            );
 
-                            let client_message = match serde_json::from_str::<ClientMessage>(&text) {
-                                Ok(client_message) => client_message,
-                                Err(err) => {
-                                    warn!(%peer_addr, error = %err, "Rejected malformed client message");
+                            let client_message =
+                                match serde_json::from_str::<ClientMessage>(
+                                    &text,
+                                ) {
+                                    Ok(client_message) => {
+                                        client_message
+                                    }
 
-                                    send_server_message(
-                                        &mut sender,
-                                        &ServerMessage::Error {
-                                            message: "Malformed client message".to_string(),
-                                        },
-                                    )
-                                    .await?;
+                                    Err(err) => {
+                                        warn!(
+                                            %peer_addr,
+                                            error = %err,
+                                            "Rejected malformed client message"
+                                        );
 
-                                    continue;
-                                }
-                            };
+                                        send_server_message(
+                                            &mut sender,
+                                            &ServerMessage::Error {
+                                                message:
+                                                    "Malformed client message"
+                                                        .to_string(),
+                                            },
+                                        )
+                                        .await?;
 
-                            if let Some((identity_id, entity_net_id)) = handle_client_message(
+                                        continue;
+                                    }
+                                };
+
+                            if let Some((
+                                identity_id,
+                                entity_net_id,
+                            )) = handle_client_message(
                                 &mut sender,
                                 peer_addr,
                                 client_id,
@@ -70,27 +97,51 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
                             )
                             .await?
                             {
-                                player_identity_id = Some(identity_id);
-                                player_entity_net_id = Some(entity_net_id);
+                                player_identity_id =
+                                    Some(identity_id);
+
+                                player_entity_net_id =
+                                    Some(entity_net_id);
                             }
                         }
+
                         Message::Close(_) => {
-                            info!(%peer_addr, "Client disconnected");
+                            info!(
+                                %peer_addr,
+                                "Client disconnected"
+                            );
+
                             break;
                         }
+
                         Message::Ping(payload) => {
-                            sender.send(Message::Pong(payload)).await?;
+                            sender
+                                .send(Message::Pong(payload))
+                                .await?;
                         }
+
                         Message::Pong(_) => {}
-                        Message::Binary(_) | Message::Frame(_) => {
-                            warn!(%peer_addr, "Ignoring unsupported WebSocket message type");
+
+                        Message::Binary(_) |
+                        Message::Frame(_) => {
+                            warn!(
+                                %peer_addr,
+                                "Ignoring unsupported WebSocket message type"
+                            );
                         }
                     }
                 }
 
-                _ = snapshot_interval.tick(), if player_entity_net_id.is_some() => {
+                _ = snapshot_interval.tick(),
+                    if player_entity_net_id.is_some() =>
+                {
                     let state = state.read().await;
-                    send_server_message(&mut sender, &state.snapshot_message()).await?;
+
+                    send_server_message(
+                        &mut sender,
+                        &state.snapshot_message(),
+                    )
+                    .await?;
                 }
             }
         }
@@ -142,7 +193,12 @@ async fn handle_client_message(
         } => {
             if let Some(existing_identity_id) = current_identity_id {
                 if existing_identity_id == &identity_id {
-                    warn!(%peer_addr, %client_id, %identity_id, "Client sent duplicate Hello");
+                    warn!(
+                        %peer_addr,
+                        %client_id,
+                        %identity_id,
+                        "Client sent duplicate Hello"
+                    );
 
                     if let Some(entity_net_id) = current_entity_net_id {
                         send_server_message(
@@ -186,8 +242,11 @@ async fn handle_client_message(
             );
 
             let mut state_write = state.write().await;
+
             let entity_net_id = state_write.connect_player(client_id, identity_id.clone());
+
             let snapshot = state_write.snapshot_message();
+
             drop(state_write);
 
             send_server_message(
@@ -203,9 +262,14 @@ async fn handle_client_message(
 
             Ok(Some((identity_id, entity_net_id)))
         }
+
         ClientMessage::Input { seq, movement } => {
             let Some(entity_net_id) = current_entity_net_id else {
-                warn!(%peer_addr, seq, "Rejected input before handshake");
+                warn!(
+                    %peer_addr,
+                    seq,
+                    "Rejected input before handshake"
+                );
 
                 send_server_message(
                     sender,
@@ -219,29 +283,46 @@ async fn handle_client_message(
             };
 
             let mut state_write = state.write().await;
-            let applied = state_write.set_movement_input(entity_net_id, movement);
+
+            let update_result = state_write.set_movement_input(entity_net_id, seq, movement);
+
             drop(state_write);
 
-            if applied {
-                debug!(
-                    %peer_addr,
-                    seq,
-                    entity_net_id,
-                    ?movement,
-                    "Applied movement input"
-                );
-            } else {
-                warn!(
-                    %peer_addr,
-                    seq,
-                    entity_net_id,
-                    ?movement,
-                    "Failed to apply movement input because entity was missing"
-                );
+            match update_result {
+                InputUpdateResult::Accepted => {
+                    debug!(
+                        %peer_addr,
+                        seq,
+                        entity_net_id,
+                        ?movement,
+                        "Accepted movement input"
+                    );
+                }
+
+                InputUpdateResult::Stale => {
+                    debug!(
+                        %peer_addr,
+                        seq,
+                        entity_net_id,
+                        ?movement,
+                        "Rejected stale movement input"
+                    );
+                }
+
+                InputUpdateResult::EntityMissing => {
+                    warn!(
+                        %peer_addr,
+                        seq,
+                        entity_net_id,
+                        ?movement,
+                        "Rejected movement input because entity was missing"
+                    );
+                }
             }
 
             Ok(None)
         }
+
         ClientMessage::Chat { text } => {
             send_server_message(
                 sender,
@@ -254,8 +335,14 @@ async fn handle_client_message(
 
             Ok(None)
         }
+
         ClientMessage::Interact { target } => {
-            debug!(%peer_addr, target, "Received interaction message");
+            debug!(
+                %peer_addr,
+                target,
+                "Received interaction message"
+            );
+
             Ok(None)
         }
     }
@@ -269,6 +356,8 @@ async fn send_server_message(
     message: &ServerMessage,
 ) -> Result<()> {
     let text = serde_json::to_string(message).context("failed to serialize server message")?;
+
     sender.send(Message::Text(text)).await?;
+
     Ok(())
 }

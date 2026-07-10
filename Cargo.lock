@@ -168,6 +168,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "honknet-core"
+version = "0.1.0"
+dependencies = [
+ "honknet-protocol",
+ "serde",
+]
+
+[[package]]
+name = "honknet-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "uuid",
+]
+
+[[package]]
+name = "honknet-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures-util",
+ "honknet-core",
+ "honknet-protocol",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "http"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -465,39 +498,6 @@ checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
  "windows-sys",
-]
-
-[[package]]
-name = "honknet-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "honknet-protocol",
-]
-
-[[package]]
-name = "honknet-protocol"
-version = "0.1.0"
-dependencies = [
- "serde",
- "uuid",
-]
-
-[[package]]
-name = "honknet-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures-util",
- "serde",
- "serde_json",
- "honknet-core",
- "honknet-protocol",
- "tokio",
- "tokio-tungstenite",
- "tracing",
- "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
