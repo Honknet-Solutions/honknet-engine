@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
 use ss15_protocol::{
-    ClientId, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId, ServerMessage,
+    ClientId, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId, ServerMessage, Vec2,
 };
 use tokio::sync::RwLock;
 
 pub type SharedServerState = Arc<RwLock<ServerState>>;
+
+const DEBUG_MOVE_STEP: f32 = 0.5;
 
 #[derive(Debug, Clone)]
 pub struct ServerState {
@@ -85,6 +87,23 @@ impl ServerState {
         Some(player.entity_net_id)
     }
 
+    pub fn apply_movement_input(&mut self, entity_net_id: EntityNetId, movement: Vec2) -> bool {
+        let Some(entity) = self
+            .entities
+            .iter_mut()
+            .find(|entity| entity.net_id == entity_net_id)
+        else {
+            return false;
+        };
+
+        let movement = sanitize_movement(movement);
+
+        entity.position.x += movement.x * DEBUG_MOVE_STEP;
+        entity.position.y += movement.y * DEBUG_MOVE_STEP;
+
+        true
+    }
+
     pub fn snapshot_message(&self) -> ServerMessage {
         ServerMessage::Snapshot {
             tick: self.tick,
@@ -112,6 +131,25 @@ impl ServerState {
         let entity_net_id = self.next_entity_net_id;
         self.next_entity_net_id = self.next_entity_net_id.saturating_add(1);
         entity_net_id
+    }
+}
+
+fn sanitize_movement(movement: Vec2) -> Vec2 {
+    if !movement.x.is_finite() || !movement.y.is_finite() {
+        return Vec2 { x: 0.0, y: 0.0 };
+    }
+
+    let length_squared = movement.x * movement.x + movement.y * movement.y;
+
+    if length_squared <= 1.0 {
+        return movement;
+    }
+
+    let length = length_squared.sqrt();
+
+    Vec2 {
+        x: movement.x / length,
+        y: movement.y / length,
     }
 }
 

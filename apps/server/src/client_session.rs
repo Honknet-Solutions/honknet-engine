@@ -204,7 +204,42 @@ async fn handle_client_message(
             Ok(Some((identity_id, entity_net_id)))
         }
         ClientMessage::Input { seq, movement } => {
-            debug!(%peer_addr, seq, ?movement, "Received input message");
+            let Some(entity_net_id) = current_entity_net_id else {
+                warn!(%peer_addr, seq, "Rejected input before handshake");
+
+                send_server_message(
+                    sender,
+                    &ServerMessage::Error {
+                        message: "Input rejected before handshake".to_string(),
+                    },
+                )
+                .await?;
+
+                return Ok(None);
+            };
+
+            let mut state_write = state.write().await;
+            let applied = state_write.apply_movement_input(entity_net_id, movement);
+            drop(state_write);
+
+            if applied {
+                debug!(
+                    %peer_addr,
+                    seq,
+                    entity_net_id,
+                    ?movement,
+                    "Applied movement input"
+                );
+            } else {
+                warn!(
+                    %peer_addr,
+                    seq,
+                    entity_net_id,
+                    ?movement,
+                    "Failed to apply movement input because entity was missing"
+                );
+            }
+
             Ok(None)
         }
         ClientMessage::Chat { text } => {
