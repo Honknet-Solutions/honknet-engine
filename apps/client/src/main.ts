@@ -5,10 +5,16 @@ type Vec2 = {
   y: number;
 };
 
+type NetPosition = {
+  x: number;
+  y: number;
+  z: number;
+};
+
 type EntitySnapshot = {
   net_id: number;
   prototype: string;
-  position: Vec2;
+  position: NetPosition;
 };
 
 type ClientMessage =
@@ -86,7 +92,7 @@ function handleServerMessage(message: ServerMessage): void {
 
       for (const entity of message.data.entities) {
         writeLog(
-          `Entity ${entity.net_id}: ${entity.prototype} at (${entity.position.x}, ${entity.position.y})`,
+          `Entity ${entity.net_id}: ${entity.prototype} at (${entity.position.x}, ${entity.position.y}, z=${entity.position.z})`,
         );
       }
 

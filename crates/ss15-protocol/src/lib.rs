@@ -15,6 +15,13 @@ pub struct Vec2 {
     pub y: f32,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct NetPosition {
+    pub x: f32,
+    pub y: f32,
+    pub z: i32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ClientMessage {
@@ -47,5 +54,5 @@ pub enum ServerMessage {
 pub struct EntitySnapshot {
     pub net_id: EntityNetId,
     pub prototype: String,
-    pub position: Vec2,
+    pub position: NetPosition,
 }

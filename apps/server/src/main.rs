@@ -1,8 +1,10 @@
+mod debug_world;
+
 use std::net::SocketAddr;
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use ss15_protocol::{ClientMessage, EntitySnapshot, ServerMessage, Vec2};
+use ss15_protocol::{ClientMessage, ServerMessage};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
@@ -75,7 +77,7 @@ async fn handle_client(stream: TcpStream, peer_addr: SocketAddr) -> Result<()> {
 
                         send_server_message(&mut sender, &ServerMessage::Welcome { client_id })
                             .await?;
-                        send_server_message(&mut sender, &debug_snapshot()).await?;
+                        send_server_message(&mut sender, &debug_world::initial_snapshot()).await?;
                     }
                     ClientMessage::Input { seq, movement } => {
                         debug!(%peer_addr, seq, ?movement, "Received input message");
@@ -108,17 +110,6 @@ async fn handle_client(stream: TcpStream, peer_addr: SocketAddr) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn debug_snapshot() -> ServerMessage {
-    ServerMessage::Snapshot {
-        tick: 0,
-        entities: vec![EntitySnapshot {
-            net_id: 1,
-            prototype: "debug.player".to_string(),
-            position: Vec2 { x: 0.0, y: 0.0 },
-        }],
-    }
 }
 
 async fn send_server_message(
