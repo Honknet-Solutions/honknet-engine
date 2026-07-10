@@ -1,5 +1,7 @@
 import './style.css';
 
+import { getOrCreateGuestIdentityId } from './identity';
+import { InputController } from './input';
 import type {
   ClientMessage,
   EntitySnapshot,
@@ -10,7 +12,6 @@ import type {
 
 const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
-const GUEST_IDENTITY_STORAGE_KEY = 'ss15.guestIdentityId';
 const INPUT_SEND_INTERVAL_MS = 50;
 const WORLD_SCALE = 32;
 
@@ -25,7 +26,9 @@ app.innerHTML = `
     <section class="panel">
       <p class="eyebrow">Honknet Solutions</p>
       <h1>Space Station 15</h1>
-      <p>Browser-first modular 2D multiplayer immersive simulation framework.</p>
+      <p>
+        Browser-first modular 2D multiplayer immersive simulation framework.
+      </p>
 
       <label class="field">
         <span>Server URL</span>
@@ -39,14 +42,17 @@ app.innerHTML = `
           <span class="status-label">Identity</span>
           <strong id="identity-status">-</strong>
         </div>
+
         <div>
           <span class="status-label">Client</span>
           <strong id="client-status">not connected</strong>
         </div>
+
         <div>
           <span class="status-label">Entity</span>
           <strong id="entity-status">-</strong>
         </div>
+
         <div>
           <span class="status-label">Tick</span>
           <strong id="tick-status">-</strong>
@@ -66,12 +72,23 @@ app.innerHTML = `
 
 const log = document.querySelector<HTMLPreElement>('#log');
 const button = document.querySelector<HTMLButtonElement>('#connect');
-const serverUrlInput = document.querySelector<HTMLInputElement>('#server-url');
-const canvasElement = document.querySelector<HTMLCanvasElement>('#viewport');
-const identityStatus = document.querySelector<HTMLElement>('#identity-status');
-const clientStatus = document.querySelector<HTMLElement>('#client-status');
-const entityStatus = document.querySelector<HTMLElement>('#entity-status');
-const tickStatus = document.querySelector<HTMLElement>('#tick-status');
+const serverUrlInput =
+  document.querySelector<HTMLInputElement>('#server-url');
+
+const canvasElement =
+  document.querySelector<HTMLCanvasElement>('#viewport');
+
+const identityStatus =
+  document.querySelector<HTMLElement>('#identity-status');
+
+const clientStatus =
+  document.querySelector<HTMLElement>('#client-status');
+
+const entityStatus =
+  document.querySelector<HTMLElement>('#entity-status');
+
+const tickStatus =
+  document.querySelector<HTMLElement>('#tick-status');
 
 if (!canvasElement) {
   throw new Error('Missing #viewport canvas');
@@ -84,7 +101,8 @@ if (!canvasContextMaybe) {
 }
 
 const canvas: HTMLCanvasElement = canvasElement;
-const canvasContext: CanvasRenderingContext2D = canvasContextMaybe;
+const canvasContext: CanvasRenderingContext2D =
+  canvasContextMaybe;
 
 let socket: WebSocket | null = null;
 let clientId: string | null = null;
@@ -92,8 +110,8 @@ let playerEntityNetId: number | null = null;
 let lastServerTick: number | null = null;
 let inputSeq = 0;
 
-const pressedKeys = new Set<string>();
 const entitiesByNetId = new Map<number, EntitySnapshot>();
+const inputController = new InputController();
 const playerIdentityId = getOrCreateGuestIdentityId();
 
 setText(identityStatus, playerIdentityId);
@@ -105,44 +123,10 @@ window.setInterval(() => {
 
 window.requestAnimationFrame(renderFrame);
 
-window.addEventListener('keydown', (event: KeyboardEvent) => {
-  if (isMovementKey(event.key)) {
-    event.preventDefault();
-    pressedKeys.add(event.key.toLowerCase());
-  }
-});
-
-window.addEventListener('keyup', (event: KeyboardEvent) => {
-  if (isMovementKey(event.key)) {
-    event.preventDefault();
-    pressedKeys.delete(event.key.toLowerCase());
-  }
-});
-
-window.addEventListener('blur', () => {
-  pressedKeys.clear();
-});
-
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    pressedKeys.clear();
-  }
-});
-
-function getOrCreateGuestIdentityId(): string {
-  const existingIdentityId = localStorage.getItem(GUEST_IDENTITY_STORAGE_KEY);
-
-  if (existingIdentityId && existingIdentityId.trim().length > 0) {
-    return existingIdentityId;
-  }
-
-  const newIdentityId = `guest-${crypto.randomUUID()}`;
-  localStorage.setItem(GUEST_IDENTITY_STORAGE_KEY, newIdentityId);
-
-  return newIdentityId;
-}
-
-function setText(element: HTMLElement | null, value: string): void {
+function setText(
+  element: HTMLElement | null,
+  value: string,
+): void {
   if (!element) {
     return;
   }
@@ -156,7 +140,11 @@ function writeLog(message: string): void {
   }
 
   const currentLines = log.textContent?.split('\n') ?? [];
-  const nextLines = [...currentLines, `${new Date().toLocaleTimeString()} ${message}`];
+
+  const nextLines = [
+    ...currentLines,
+    `${new Date().toLocaleTimeString()} ${message}`,
+  ];
 
   log.textContent = nextLines.slice(-18).join('\n');
 }
@@ -169,50 +157,16 @@ function sendClientMessage(message: ClientMessage): void {
   socket.send(JSON.stringify(message));
 }
 
-function isMovementKey(key: string): boolean {
-  const normalizedKey = key.toLowerCase();
-
-  return (
-    normalizedKey === 'w' ||
-    normalizedKey === 'a' ||
-    normalizedKey === 's' ||
-    normalizedKey === 'd' ||
-    normalizedKey === 'arrowup' ||
-    normalizedKey === 'arrowleft' ||
-    normalizedKey === 'arrowdown' ||
-    normalizedKey === 'arrowright'
-  );
-}
-
-function getCurrentMovement(): Vec2 {
-  let x = 0;
-  let y = 0;
-
-  if (pressedKeys.has('a') || pressedKeys.has('arrowleft')) {
-    x -= 1;
-  }
-
-  if (pressedKeys.has('d') || pressedKeys.has('arrowright')) {
-    x += 1;
-  }
-
-  if (pressedKeys.has('w') || pressedKeys.has('arrowup')) {
-    y -= 1;
-  }
-
-  if (pressedKeys.has('s') || pressedKeys.has('arrowdown')) {
-    y += 1;
-  }
-
-  return { x, y };
-}
-
 function sendCurrentInput(): void {
-  if (!socket || socket.readyState !== WebSocket.OPEN || playerEntityNetId === null) {
+  if (
+    !socket ||
+    socket.readyState !== WebSocket.OPEN ||
+    playerEntityNetId === null
+  ) {
     return;
   }
 
-  const movement = getCurrentMovement();
+  const movement = inputController.getMovement();
 
   if (movement.x === 0 && movement.y === 0) {
     return;
@@ -245,6 +199,7 @@ function handleServerMessage(message: ServerMessage): void {
 
     case 'Snapshot':
       lastServerTick = message.data.tick;
+
       setText(tickStatus, String(lastServerTick));
 
       entitiesByNetId.clear();
@@ -268,7 +223,10 @@ function handleServerMessage(message: ServerMessage): void {
 
     default: {
       const unreachable: never = message;
-      writeLog(`Unknown server message: ${JSON.stringify(unreachable)}`);
+
+      writeLog(
+        `Unknown server message: ${JSON.stringify(unreachable)}`,
+      );
     }
   }
 }
@@ -279,7 +237,9 @@ function connectToServer(): void {
     return;
   }
 
-  const serverUrl = serverUrlInput?.value.trim() || DEFAULT_SERVER_URL;
+  const serverUrl =
+    serverUrlInput?.value.trim() || DEFAULT_SERVER_URL;
+
   writeLog(`Connecting to ${serverUrl} ...`);
 
   socket = new WebSocket(serverUrl);
@@ -296,22 +256,36 @@ function connectToServer(): void {
     });
   });
 
-  socket.addEventListener('message', (event: MessageEvent<string>) => {
-    try {
-      const serverMessage = JSON.parse(event.data) as ServerMessage;
-      handleServerMessage(serverMessage);
-    } catch (error) {
-      writeLog(`Failed to parse server message: ${String(error)}`);
-    }
-  });
+  socket.addEventListener(
+    'message',
+    (event: MessageEvent<string>) => {
+      try {
+        const serverMessage = JSON.parse(
+          event.data,
+        ) as ServerMessage;
+
+        handleServerMessage(serverMessage);
+      } catch (error) {
+        writeLog(
+          `Failed to parse server message: ${String(error)}`,
+        );
+      }
+    },
+  );
 
   socket.addEventListener('close', () => {
     writeLog('WebSocket closed.');
+
     setText(clientStatus, 'disconnected');
+
+    clientId = null;
+    playerEntityNetId = null;
   });
 
   socket.addEventListener('error', () => {
-    writeLog('WebSocket error. Is the Rust server running?');
+    writeLog(
+      'WebSocket error. Is the Rust server running?',
+    );
   });
 }
 
@@ -321,7 +295,12 @@ function renderFrame(): void {
 }
 
 function drawWorld(): void {
-  canvasContext.clearRect(0, 0, canvas.width, canvas.height);
+  canvasContext.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
 
   drawGrid();
 
@@ -337,23 +316,33 @@ function drawGrid(): void {
   const centerY = canvas.height / 2;
 
   canvasContext.lineWidth = 1;
-  canvasContext.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  canvasContext.strokeStyle =
+    'rgba(255, 255, 255, 0.08)';
 
-  for (let x = centerX % WORLD_SCALE; x < canvas.width; x += WORLD_SCALE) {
+  for (
+    let x = centerX % WORLD_SCALE;
+    x < canvas.width;
+    x += WORLD_SCALE
+  ) {
     canvasContext.beginPath();
     canvasContext.moveTo(x, 0);
     canvasContext.lineTo(x, canvas.height);
     canvasContext.stroke();
   }
 
-  for (let y = centerY % WORLD_SCALE; y < canvas.height; y += WORLD_SCALE) {
+  for (
+    let y = centerY % WORLD_SCALE;
+    y < canvas.height;
+    y += WORLD_SCALE
+  ) {
     canvasContext.beginPath();
     canvasContext.moveTo(0, y);
     canvasContext.lineTo(canvas.width, y);
     canvasContext.stroke();
   }
 
-  canvasContext.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  canvasContext.strokeStyle =
+    'rgba(255, 255, 255, 0.3)';
 
   canvasContext.beginPath();
   canvasContext.moveTo(centerX, 0);
@@ -371,17 +360,33 @@ function drawEntity(entity: EntitySnapshot): void {
   const isPlayer = entity.net_id === playerEntityNetId;
 
   canvasContext.beginPath();
-  canvasContext.arc(screenPosition.x, screenPosition.y, isPlayer ? 12 : 10, 0, Math.PI * 2);
-  canvasContext.fillStyle = isPlayer ? '#7cffc4' : '#ffcc66';
+
+  canvasContext.arc(
+    screenPosition.x,
+    screenPosition.y,
+    isPlayer ? 12 : 10,
+    0,
+    Math.PI * 2,
+  );
+
+  canvasContext.fillStyle = isPlayer
+    ? '#7cffc4'
+    : '#ffcc66';
+
   canvasContext.fill();
 
   canvasContext.lineWidth = 2;
-  canvasContext.strokeStyle = isPlayer ? '#eafff6' : '#fff0c2';
+
+  canvasContext.strokeStyle = isPlayer
+    ? '#eafff6'
+    : '#fff0c2';
+
   canvasContext.stroke();
 
   canvasContext.fillStyle = '#ffffff';
   canvasContext.font = '12px monospace';
   canvasContext.textAlign = 'center';
+
   canvasContext.fillText(
     `${entity.net_id}${isPlayer ? ' YOU' : ''}`,
     screenPosition.x,
@@ -397,11 +402,25 @@ function drawHud(): void {
   canvasContext.font = '13px monospace';
   canvasContext.textAlign = 'left';
 
-  const movement = getCurrentMovement();
+  const movement = inputController.getMovement();
 
-  canvasContext.fillText(`tick: ${lastServerTick ?? '-'}`, 24, 34);
-  canvasContext.fillText(`entity: ${playerEntityNetId ?? '-'}`, 24, 54);
-  canvasContext.fillText(`input: x=${movement.x}, y=${movement.y}`, 24, 74);
+  canvasContext.fillText(
+    `tick: ${lastServerTick ?? '-'}`,
+    24,
+    34,
+  );
+
+  canvasContext.fillText(
+    `entity: ${playerEntityNetId ?? '-'}`,
+    24,
+    54,
+  );
+
+  canvasContext.fillText(
+    `input: x=${movement.x}, y=${movement.y}`,
+    24,
+    74,
+  );
 }
 
 function worldToScreen(position: NetPosition): Vec2 {
@@ -414,4 +433,8 @@ function worldToScreen(position: NetPosition): Vec2 {
 button?.addEventListener('click', () => {
   connectToServer();
   window.focus();
+});
+
+window.addEventListener('beforeunload', () => {
+  inputController.destroy();
 });
