@@ -7,6 +7,7 @@ import {
 import type {
   EntityNetId,
   EntitySnapshot,
+  NetPosition,
   Vec2,
 } from './protocol';
 
@@ -27,7 +28,7 @@ type EntityView = {
 
 export class PixiRenderer {
   private readonly application = new Application();
-  private readonly worldContainer = new Container();
+
   private readonly gridContainer = new Container();
   private readonly entityContainer = new Container();
 
@@ -41,6 +42,12 @@ export class PixiRenderer {
     playerEntityNetId: null,
     movement: { x: 0, y: 0 },
     entities: new Map(),
+  };
+
+  private cameraPosition: NetPosition = {
+    x: 0,
+    y: 0,
+    z: 0,
   };
 
   private initialized = false;
@@ -73,10 +80,6 @@ export class PixiRenderer {
     this.hostElement.replaceChildren(canvas);
 
     this.application.stage.addChild(
-      this.worldContainer,
-    );
-
-    this.worldContainer.addChild(
       this.gridContainer,
       this.entityContainer,
     );
@@ -100,6 +103,7 @@ export class PixiRenderer {
       return;
     }
 
+    this.updateCameraPosition();
     this.synchronizeScene();
   }
 
@@ -114,6 +118,14 @@ export class PixiRenderer {
     }
 
     this.entityViews.clear();
+
+    this.gridContainer.destroy({
+      children: true,
+    });
+
+    this.entityContainer.destroy({
+      children: true,
+    });
 
     this.application.destroy({
       removeView: true,
@@ -150,6 +162,29 @@ export class PixiRenderer {
     this.removeMissingEntityViews();
     this.createMissingEntityViews();
     this.updateEntityViews();
+    this.redrawGrid();
+  }
+
+  private updateCameraPosition(): void {
+    const playerEntityNetId =
+      this.state.playerEntityNetId;
+
+    if (playerEntityNetId === null) {
+      return;
+    }
+
+    const playerEntity =
+      this.state.entities.get(playerEntityNetId);
+
+    if (!playerEntity) {
+      return;
+    }
+
+    this.cameraPosition = {
+      x: playerEntity.position.x,
+      y: playerEntity.position.y,
+      z: playerEntity.position.z,
+    };
   }
 
   private removeMissingEntityViews(): void {
@@ -198,13 +233,7 @@ export class PixiRenderer {
   }
 
   private updateEntityViews(): void {
-    const viewportWidth =
-      this.application.renderer.width /
-      this.application.renderer.resolution;
-
-    const viewportHeight =
-      this.application.renderer.height /
-      this.application.renderer.resolution;
+    const viewportSize = this.getViewportSize();
 
     for (const entity of this.state.entities.values()) {
       const entityView = this.entityViews.get(
@@ -228,12 +257,20 @@ export class PixiRenderer {
         entityView.isPlayer = isPlayer;
       }
 
+      const screenPosition =
+        this.worldToScreen(
+          entity.position,
+          viewportSize,
+        );
+
       entityView.container.position.set(
-        viewportWidth / 2 +
-          entity.position.x * WORLD_SCALE,
-        viewportHeight / 2 +
-          entity.position.y * WORLD_SCALE,
+        screenPosition.x,
+        screenPosition.y,
       );
+
+      entityView.container.visible =
+        entity.position.z ===
+        this.cameraPosition.z;
     }
   }
 
@@ -292,34 +329,45 @@ export class PixiRenderer {
     this.gridContainer.removeChildren();
 
     const grid = new Graphics();
+    const viewportSize = this.getViewportSize();
 
-    const viewportWidth =
-      this.application.renderer.width /
-      this.application.renderer.resolution;
+    const cameraPixelX =
+      this.cameraPosition.x * WORLD_SCALE;
 
-    const viewportHeight =
-      this.application.renderer.height /
-      this.application.renderer.resolution;
+    const cameraPixelY =
+      this.cameraPosition.y * WORLD_SCALE;
 
-    const centerX = viewportWidth / 2;
-    const centerY = viewportHeight / 2;
+    const centerX = viewportSize.x / 2;
+    const centerY = viewportSize.y / 2;
+
+    const horizontalOffset =
+      positiveModulo(
+        centerX - cameraPixelX,
+        WORLD_SCALE,
+      );
+
+    const verticalOffset =
+      positiveModulo(
+        centerY - cameraPixelY,
+        WORLD_SCALE,
+      );
 
     for (
-      let x = centerX % WORLD_SCALE;
-      x <= viewportWidth;
+      let x = horizontalOffset;
+      x <= viewportSize.x;
       x += WORLD_SCALE
     ) {
       grid.moveTo(x, 0);
-      grid.lineTo(x, viewportHeight);
+      grid.lineTo(x, viewportSize.y);
     }
 
     for (
-      let y = centerY % WORLD_SCALE;
-      y <= viewportHeight;
+      let y = verticalOffset;
+      y <= viewportSize.y;
       y += WORLD_SCALE
     ) {
       grid.moveTo(0, y);
-      grid.lineTo(viewportWidth, y);
+      grid.lineTo(viewportSize.x, y);
     }
 
     grid.stroke({
@@ -328,11 +376,37 @@ export class PixiRenderer {
       alpha: 0.08,
     });
 
-    grid.moveTo(centerX, 0);
-    grid.lineTo(centerX, viewportHeight);
+    const worldOriginScreen =
+      this.worldToScreen(
+        {
+          x: 0,
+          y: 0,
+          z: this.cameraPosition.z,
+        },
+        viewportSize,
+      );
 
-    grid.moveTo(0, centerY);
-    grid.lineTo(viewportWidth, centerY);
+    if (
+      worldOriginScreen.x >= 0 &&
+      worldOriginScreen.x <= viewportSize.x
+    ) {
+      grid.moveTo(worldOriginScreen.x, 0);
+      grid.lineTo(
+        worldOriginScreen.x,
+        viewportSize.y,
+      );
+    }
+
+    if (
+      worldOriginScreen.y >= 0 &&
+      worldOriginScreen.y <= viewportSize.y
+    ) {
+      grid.moveTo(0, worldOriginScreen.y);
+      grid.lineTo(
+        viewportSize.x,
+        worldOriginScreen.y,
+      );
+    }
 
     grid.stroke({
       color: 0xffffff,
@@ -342,4 +416,46 @@ export class PixiRenderer {
 
     this.gridContainer.addChild(grid);
   }
+
+  private worldToScreen(
+    position: NetPosition,
+    viewportSize: Vec2,
+  ): Vec2 {
+    return {
+      x:
+        viewportSize.x / 2 +
+        (
+          position.x -
+          this.cameraPosition.x
+        ) *
+          WORLD_SCALE,
+
+      y:
+        viewportSize.y / 2 +
+        (
+          position.y -
+          this.cameraPosition.y
+        ) *
+          WORLD_SCALE,
+    };
+  }
+
+  private getViewportSize(): Vec2 {
+    return {
+      x:
+        this.application.renderer.width /
+        this.application.renderer.resolution,
+
+      y:
+        this.application.renderer.height /
+        this.application.renderer.resolution,
+    };
+  }
+}
+
+function positiveModulo(
+  value: number,
+  divisor: number,
+): number {
+  return ((value % divisor) + divisor) % divisor;
 }
