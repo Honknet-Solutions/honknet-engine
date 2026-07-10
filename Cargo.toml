@@ -9,8 +9,8 @@ members = [
 [workspace.package]
 edition = "2021"
 license = "Apache-2.0"
-authors = ["Open Station"]
-repository = "https://github.com/Open-Station/space-station-15"
+authors = ["Honknet Solutions"]
+repository = "https://github.com/https://github.com/Honknet-Solutions/space-station-15/space-station-15"
 
 [workspace.dependencies]
 anyhow = "1"
