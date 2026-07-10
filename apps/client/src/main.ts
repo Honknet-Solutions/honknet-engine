@@ -22,6 +22,10 @@ const INPUT_SEND_INTERVAL_MS = 50;
 const PLAYER_MOVE_SPEED = 4.0;
 const MAX_PREDICTION_DELTA_SECONDS = 0.1;
 
+const RECONCILIATION_SPEED = 12.0;
+const RECONCILIATION_IGNORE_DISTANCE = 0.0025;
+const RECONCILIATION_SNAP_DISTANCE = 2.0;
+
 type PendingInput = {
   sequence: number;
   movement: Vec2;
@@ -138,17 +142,21 @@ let lastServerTick: number | null = null;
 let lastProcessedInputSeq: number | null = null;
 
 let inputSeq = 0;
-
 let lastSentMovement: Vec2 | null = null;
 
 let predictedPlayerPosition:
   NetPosition | null = null;
 
+let pendingPositionCorrection: Vec2 = {
+  x: 0,
+  y: 0,
+};
+
 let lastPredictionFrameMilliseconds =
   performance.now();
 
-let predictionFrameRequestId: number | null =
-  null;
+let predictionFrameRequestId:
+  number | null = null;
 
 const pendingInputs: PendingInput[] = [];
 
@@ -193,6 +201,11 @@ const connection = new ClientConnection({
     lastProcessedInputSeq = null;
     lastSentMovement = null;
     predictedPlayerPosition = null;
+
+    pendingPositionCorrection = {
+      x: 0,
+      y: 0,
+    };
 
     pendingInputs.length = 0;
 
@@ -332,6 +345,7 @@ function updatePredictionFrame(
   );
 
   applyLocalPrediction(deltaSeconds);
+  applyPredictionCorrection(deltaSeconds);
   updateRendererState();
 
   predictionFrameRequestId =
@@ -366,6 +380,59 @@ function applyLocalPrediction(
     deltaSeconds;
 }
 
+function applyPredictionCorrection(
+  deltaSeconds: number,
+): void {
+  if (predictedPlayerPosition === null) {
+    return;
+  }
+
+  const remainingDistance =
+    Math.hypot(
+      pendingPositionCorrection.x,
+      pendingPositionCorrection.y,
+    );
+
+  if (
+    remainingDistance <=
+    RECONCILIATION_IGNORE_DISTANCE
+  ) {
+    pendingPositionCorrection = {
+      x: 0,
+      y: 0,
+    };
+
+    return;
+  }
+
+  const correctionFactor =
+    1 -
+    Math.exp(
+      -RECONCILIATION_SPEED *
+        deltaSeconds,
+    );
+
+  const correctionX =
+    pendingPositionCorrection.x *
+    correctionFactor;
+
+  const correctionY =
+    pendingPositionCorrection.y *
+    correctionFactor;
+
+  predictedPlayerPosition.x +=
+    correctionX;
+
+  predictedPlayerPosition.y +=
+    correctionY;
+
+  pendingPositionCorrection.x -=
+    correctionX;
+
+  pendingPositionCorrection.y -=
+    correctionY;
+}
+
 function handleServerMessage(
   message: ServerMessage,
 ): void {
@@ -380,6 +447,11 @@ function handleServerMessage(
       lastProcessedInputSeq = null;
       lastSentMovement = null;
       predictedPlayerPosition = null;
+
+      pendingPositionCorrection = {
+        x: 0,
+        y: 0,
+      };
 
       pendingInputs.length = 0;
 
@@ -455,7 +527,7 @@ function handleSnapshot(
     );
   }
 
-  initializeOrUpdatePredictionPosition();
+  reconcilePredictedPlayerPosition();
 
   if (
     lastProcessedInputSeq !== null
@@ -472,7 +544,7 @@ function handleSnapshot(
   updateRendererState();
 }
 
-function initializeOrUpdatePredictionPosition(): void {
+function reconcilePredictedPlayerPosition(): void {
   if (playerEntityNetId === null) {
     return;
   }
@@ -493,11 +565,66 @@ function initializeOrUpdatePredictionPosition(): void {
       z: serverPlayer.position.z,
     };
 
+    pendingPositionCorrection = {
+      x: 0,
+      y: 0,
+    };
+
     return;
   }
 
   predictedPlayerPosition.z =
     serverPlayer.position.z;
+
+  const errorX =
+    serverPlayer.position.x -
+    predictedPlayerPosition.x;
+
+  const errorY =
+    serverPlayer.position.y -
+    predictedPlayerPosition.y;
+
+  const errorDistance =
+    Math.hypot(errorX, errorY);
+
+  if (
+    errorDistance <=
+    RECONCILIATION_IGNORE_DISTANCE
+  ) {
+    pendingPositionCorrection = {
+      x: 0,
+      y: 0,
+    };
+
+    return;
+  }
+
+  if (
+    errorDistance >=
+    RECONCILIATION_SNAP_DISTANCE
+  ) {
+    predictedPlayerPosition = {
+      x: serverPlayer.position.x,
+      y: serverPlayer.position.y,
+      z: serverPlayer.position.z,
+    };
+
+    pendingPositionCorrection = {
+      x: 0,
+      y: 0,
+    };
+
+    writeLog(
+      `Prediction snapped to server. error=${errorDistance.toFixed(3)}`,
+    );
+
+    return;
+  }
+
+  pendingPositionCorrection = {
+    x: errorX,
+    y: errorY,
+  };
 }
 
 function removeAcknowledgedInputs(
@@ -524,7 +651,10 @@ function isSequenceAcknowledged(
   sequence: number,
   acknowledgedSequence: number,
 ): boolean {
-  if (sequence === acknowledgedSequence) {
+  if (
+    sequence ===
+    acknowledgedSequence
+  ) {
     return true;
   }
 
