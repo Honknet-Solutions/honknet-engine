@@ -57,6 +57,7 @@ export type ServerMessage =
       type: 'Snapshot';
       data: {
         tick: number;
+        last_processed_input_seq: number | null;
         entities: EntitySnapshot[];
       };
     }

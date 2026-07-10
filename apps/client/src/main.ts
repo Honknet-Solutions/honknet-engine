@@ -300,6 +300,9 @@ function handleServerMessage(
         String(lastServerTick),
       );
 
+      const acknowledgedInputSeq =
+        message.data.last_processed_input_seq;
+
       entitiesByNetId.clear();
 
       for (const entity of message.data.entities) {
@@ -310,7 +313,7 @@ function handleServerMessage(
       }
 
       writeLog(
-        `Snapshot tick=${message.data.tick}, entities=${message.data.entities.length}`,
+        `Snapshot tick=${message.data.tick}, ack=${acknowledgedInputSeq ?? 'none'}, entities=${message.data.entities.length}`,
       );
 
       updateRendererState();

@@ -1,4 +1,4 @@
-//! Shared network protocol definitions for Space Station 15.
+//! Shared network protocol definitions for the Honknet framework.
 //!
 //! This crate contains stable message shapes used by the Rust server.
 //! TypeScript definitions should be generated from the same schema in the future.
@@ -51,6 +51,7 @@ pub enum ServerMessage {
     },
     Snapshot {
         tick: u64,
+        last_processed_input_seq: Option<u32>,
         entities: Vec<EntitySnapshot>,
     },
     Chat {

@@ -158,9 +158,15 @@ impl ServerState {
         InputUpdateResult::Accepted
     }
 
-    pub fn snapshot_message(&self) -> ServerMessage {
+    pub fn snapshot_message_for(&self, entity_net_id: EntityNetId) -> ServerMessage {
+        let last_processed_input_seq = self
+            .player_inputs
+            .get(&entity_net_id)
+            .and_then(|input_state| input_state.last_sequence);
+
         ServerMessage::Snapshot {
             tick: self.tick,
+            last_processed_input_seq,
             entities: self.entities.clone(),
         }
     }

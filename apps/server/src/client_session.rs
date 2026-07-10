@@ -135,11 +135,24 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: SharedServerSt
                 _ = snapshot_interval.tick(),
                     if player_entity_net_id.is_some() =>
                 {
+                    let Some(entity_net_id) =
+                        player_entity_net_id
+                    else {
+                        continue;
+                    };
+
                     let state = state.read().await;
+
+                    let snapshot =
+                        state.snapshot_message_for(
+                            entity_net_id,
+                        );
+
+                    drop(state);
 
                     send_server_message(
                         &mut sender,
-                        &state.snapshot_message(),
+                        &snapshot,
                     )
                     .await?;
                 }
@@ -245,7 +258,7 @@ async fn handle_client_message(
 
             let entity_net_id = state_write.connect_player(client_id, identity_id.clone());
 
-            let snapshot = state_write.snapshot_message();
+            let snapshot = state_write.snapshot_message_for(entity_net_id);
 
             drop(state_write);
 
