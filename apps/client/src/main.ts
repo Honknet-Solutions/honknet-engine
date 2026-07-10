@@ -10,15 +10,26 @@ import {
 import type {
   EntityNetId,
   EntitySnapshot,
+  NetPosition,
   ServerMessage,
   Vec2,
 } from './protocol';
 
 const CLIENT_VERSION = '0.1.0-dev';
 const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
-const INPUT_SEND_INTERVAL_MS = 50;
 
-const app = document.querySelector<HTMLDivElement>('#app');
+const INPUT_SEND_INTERVAL_MS = 50;
+const PLAYER_MOVE_SPEED = 4.0;
+const MAX_PREDICTION_DELTA_SECONDS = 0.1;
+
+type PendingInput = {
+  sequence: number;
+  movement: Vec2;
+  sentAtMilliseconds: number;
+};
+
+const app =
+  document.querySelector<HTMLDivElement>('#app');
 
 if (!app) {
   throw new Error('Missing #app root element');
@@ -93,7 +104,9 @@ const serverUrlInput =
   );
 
 const viewportElement =
-  document.querySelector<HTMLElement>('#viewport');
+  document.querySelector<HTMLElement>(
+    '#viewport',
+  );
 
 const identityStatus =
   document.querySelector<HTMLElement>(
@@ -122,23 +135,33 @@ if (!viewportElement) {
 let clientId: string | null = null;
 let playerEntityNetId: EntityNetId | null = null;
 let lastServerTick: number | null = null;
+let lastProcessedInputSeq: number | null = null;
+
 let inputSeq = 0;
 
-let lastSentMovement: Vec2 = {
-  x: 0,
-  y: 0,
-};
+let lastSentMovement: Vec2 | null = null;
+
+let predictedPlayerPosition:
+  NetPosition | null = null;
+
+let lastPredictionFrameMilliseconds =
+  performance.now();
+
+let predictionFrameRequestId: number | null =
+  null;
+
+const pendingInputs: PendingInput[] = [];
 
 const entitiesByNetId = new Map<
   EntityNetId,
   EntitySnapshot
 >();
 
-const inputController = new InputController();
+const inputController =
+  new InputController();
 
-const pixiRenderer = new PixiRenderer(
-  viewportElement,
-);
+const pixiRenderer =
+  new PixiRenderer(viewportElement);
 
 const playerIdentityId =
   getOrCreateGuestIdentityId();
@@ -167,13 +190,17 @@ const connection = new ClientConnection({
 
     clientId = null;
     playerEntityNetId = null;
+    lastProcessedInputSeq = null;
+    lastSentMovement = null;
+    predictedPlayerPosition = null;
 
-    lastSentMovement = {
-      x: 0,
-      y: 0,
-    };
+    pendingInputs.length = 0;
 
-    setText(clientStatus, 'disconnected');
+    setText(
+      clientStatus,
+      'disconnected',
+    );
+
     setText(entityStatus, '-');
 
     updateRendererState();
@@ -186,14 +213,26 @@ const connection = new ClientConnection({
 
 await pixiRenderer.initialize();
 
-setText(identityStatus, playerIdentityId);
-writeLog(`Guest identity: ${playerIdentityId}`);
+setText(
+  identityStatus,
+  playerIdentityId,
+);
+
+writeLog(
+  `Guest identity: ${playerIdentityId}`,
+);
 
 updateRendererState();
 
-window.setInterval(() => {
-  sendCurrentInput();
-}, INPUT_SEND_INTERVAL_MS);
+window.setInterval(
+  sendCurrentInput,
+  INPUT_SEND_INTERVAL_MS,
+);
+
+predictionFrameRequestId =
+  requestAnimationFrame(
+    updatePredictionFrame,
+  );
 
 function setText(
   element: HTMLElement | null,
@@ -228,8 +267,6 @@ function sendCurrentInput(): void {
   const movement =
     inputController.getMovement();
 
-  updateRendererState();
-
   if (
     !connection.isConnected ||
     playerEntityNetId === null
@@ -238,19 +275,24 @@ function sendCurrentInput(): void {
   }
 
   if (
+    lastSentMovement !== null &&
     movement.x === lastSentMovement.x &&
     movement.y === lastSentMovement.y
   ) {
     return;
   }
 
-  inputSeq += 1;
+  inputSeq =
+    (inputSeq + 1) >>> 0;
+
+  const normalizedMovement =
+    normalizeMovement(movement);
 
   const sent = connection.send({
     type: 'Input',
     data: {
       seq: inputSeq,
-      movement,
+      movement: normalizedMovement,
     },
   });
 
@@ -262,6 +304,66 @@ function sendCurrentInput(): void {
     x: movement.x,
     y: movement.y,
   };
+
+  pendingInputs.push({
+    sequence: inputSeq,
+    movement: normalizedMovement,
+    sentAtMilliseconds:
+      performance.now(),
+  });
+}
+
+function updatePredictionFrame(
+  currentMilliseconds: number,
+): void {
+  const elapsedMilliseconds =
+    currentMilliseconds -
+    lastPredictionFrameMilliseconds;
+
+  lastPredictionFrameMilliseconds =
+    currentMilliseconds;
+
+  const deltaSeconds = Math.min(
+    Math.max(
+      elapsedMilliseconds / 1000,
+      0,
+    ),
+    MAX_PREDICTION_DELTA_SECONDS,
+  );
+
+  applyLocalPrediction(deltaSeconds);
+  updateRendererState();
+
+  predictionFrameRequestId =
+    requestAnimationFrame(
+      updatePredictionFrame,
+    );
+}
+
+function applyLocalPrediction(
+  deltaSeconds: number,
+): void {
+  if (
+    !connection.isConnected ||
+    playerEntityNetId === null ||
+    predictedPlayerPosition === null
+  ) {
+    return;
+  }
+
+  const movement = normalizeMovement(
+    inputController.getMovement(),
+  );
+
+  predictedPlayerPosition.x +=
+    movement.x *
+    PLAYER_MOVE_SPEED *
+    deltaSeconds;
+
+  predictedPlayerPosition.y +=
+    movement.y *
+    PLAYER_MOVE_SPEED *
+    deltaSeconds;
 }
 
 function handleServerMessage(
@@ -269,16 +371,22 @@ function handleServerMessage(
 ): void {
   switch (message.type) {
     case 'Welcome':
-      clientId = message.data.client_id;
+      clientId =
+        message.data.client_id;
+
       playerEntityNetId =
         message.data.entity_net_id;
 
-      lastSentMovement = {
-        x: Number.NaN,
-        y: Number.NaN,
-      };
+      lastProcessedInputSeq = null;
+      lastSentMovement = null;
+      predictedPlayerPosition = null;
 
-      setText(clientStatus, clientId);
+      pendingInputs.length = 0;
+
+      setText(
+        clientStatus,
+        clientId,
+      );
 
       setText(
         entityStatus,
@@ -293,30 +401,7 @@ function handleServerMessage(
       break;
 
     case 'Snapshot':
-      lastServerTick = message.data.tick;
-
-      setText(
-        tickStatus,
-        String(lastServerTick),
-      );
-
-      const acknowledgedInputSeq =
-        message.data.last_processed_input_seq;
-
-      entitiesByNetId.clear();
-
-      for (const entity of message.data.entities) {
-        entitiesByNetId.set(
-          entity.net_id,
-          entity,
-        );
-      }
-
-      writeLog(
-        `Snapshot tick=${message.data.tick}, ack=${acknowledgedInputSeq ?? 'none'}, entities=${message.data.entities.length}`,
-      );
-
-      updateRendererState();
+      handleSnapshot(message);
       break;
 
     case 'Chat':
@@ -341,15 +426,174 @@ function handleServerMessage(
   }
 }
 
-function updateRendererState(): void {
-  const rendererState: PixiRendererState = {
-    serverTick: lastServerTick,
-    playerEntityNetId,
-    movement: inputController.getMovement(),
-    entities: entitiesByNetId,
-  };
+function handleSnapshot(
+  message: Extract<
+    ServerMessage,
+    { type: 'Snapshot' }
+  >,
+): void {
+  lastServerTick =
+    message.data.tick;
 
-  pixiRenderer.update(rendererState);
+  lastProcessedInputSeq =
+    message.data.last_processed_input_seq;
+
+  setText(
+    tickStatus,
+    String(lastServerTick),
+  );
+
+  entitiesByNetId.clear();
+
+  for (
+    const entity
+    of message.data.entities
+  ) {
+    entitiesByNetId.set(
+      entity.net_id,
+      entity,
+    );
+  }
+
+  initializeOrUpdatePredictionPosition();
+
+  if (
+    lastProcessedInputSeq !== null
+  ) {
+    removeAcknowledgedInputs(
+      lastProcessedInputSeq,
+    );
+  }
+
+  writeLog(
+    `Snapshot tick=${message.data.tick}, ack=${lastProcessedInputSeq ?? 'none'}, pending=${pendingInputs.length}, entities=${message.data.entities.length}`,
+  );
+
+  updateRendererState();
+}
+
+function initializeOrUpdatePredictionPosition(): void {
+  if (playerEntityNetId === null) {
+    return;
+  }
+
+  const serverPlayer =
+    entitiesByNetId.get(
+      playerEntityNetId,
+    );
+
+  if (!serverPlayer) {
+    return;
+  }
+
+  if (predictedPlayerPosition === null) {
+    predictedPlayerPosition = {
+      x: serverPlayer.position.x,
+      y: serverPlayer.position.y,
+      z: serverPlayer.position.z,
+    };
+
+    return;
+  }
+
+  predictedPlayerPosition.z =
+    serverPlayer.position.z;
+}
+
+function removeAcknowledgedInputs(
+  acknowledgedSequence: number,
+): void {
+  while (pendingInputs.length > 0) {
+    const pendingInput =
+      pendingInputs[0];
+
+    if (
+      !isSequenceAcknowledged(
+        pendingInput.sequence,
+        acknowledgedSequence,
+      )
+    ) {
+      break;
+    }
+
+    pendingInputs.shift();
+  }
+}
+
+function isSequenceAcknowledged(
+  sequence: number,
+  acknowledgedSequence: number,
+): boolean {
+  if (sequence === acknowledgedSequence) {
+    return true;
+  }
+
+  return isSequenceNewer(
+    acknowledgedSequence,
+    sequence,
+  );
+}
+
+function isSequenceNewer(
+  candidate: number,
+  current: number,
+): boolean {
+  const difference =
+    (candidate - current) >>> 0;
+
+  return (
+    difference !== 0 &&
+    difference < 0x80000000
+  );
+}
+
+function normalizeMovement(
+  movement: Vec2,
+): Vec2 {
+  if (
+    !Number.isFinite(movement.x) ||
+    !Number.isFinite(movement.y)
+  ) {
+    return {
+      x: 0,
+      y: 0,
+    };
+  }
+
+  const lengthSquared =
+    movement.x * movement.x +
+    movement.y * movement.y;
+
+  if (lengthSquared <= 1) {
+    return {
+      x: movement.x,
+      y: movement.y,
+    };
+  }
+
+  const length =
+    Math.sqrt(lengthSquared);
+
+  return {
+    x: movement.x / length,
+    y: movement.y / length,
+  };
+}
+
+function updateRendererState(): void {
+  const rendererState:
+    PixiRendererState = {
+      serverTick: lastServerTick,
+      playerEntityNetId,
+      movement:
+        inputController.getMovement(),
+      predictedPlayerPosition,
+      entities: entitiesByNetId,
+    };
+
+  pixiRenderer.update(
+    rendererState,
+  );
 }
 
 function connectToServer(): void {
@@ -368,7 +612,9 @@ function connectToServer(): void {
     serverUrlInput?.value.trim() ||
     DEFAULT_SERVER_URL;
 
-  writeLog(`Connecting to ${serverUrl} ...`);
+  writeLog(
+    `Connecting to ${serverUrl} ...`,
+  );
 
   const started =
     connection.connect(serverUrl);
@@ -391,6 +637,14 @@ connectButton?.addEventListener(
 window.addEventListener(
   'beforeunload',
   () => {
+    if (
+      predictionFrameRequestId !== null
+    ) {
+      cancelAnimationFrame(
+        predictionFrameRequestId,
+      );
+    }
+
     pixiRenderer.destroy();
     inputController.destroy();
     connection.disconnect();

@@ -19,7 +19,12 @@ export type PixiRendererState = {
   serverTick: number | null;
   playerEntityNetId: EntityNetId | null;
   movement: Vec2;
-  entities: ReadonlyMap<EntityNetId, EntitySnapshot>;
+  predictedPlayerPosition:
+    NetPosition | null;
+  entities: ReadonlyMap<
+    EntityNetId,
+    EntitySnapshot
+  >;
 };
 
 type EntityView = {
@@ -31,42 +36,55 @@ type EntityView = {
 };
 
 export class PixiRenderer {
-  private readonly application = new Application();
+  private readonly application =
+    new Application();
 
-  private readonly gridContainer = new Container();
-  private readonly entityContainer = new Container();
-  private readonly gridGraphics = new Graphics();
+  private readonly gridContainer =
+    new Container();
 
-  private readonly entityViews = new Map<
-    EntityNetId,
-    EntityView
-  >();
+  private readonly entityContainer =
+    new Container();
+
+  private readonly gridGraphics =
+    new Graphics();
+
+  private readonly entityViews =
+    new Map<EntityNetId, EntityView>();
 
   private state: PixiRendererState = {
     serverTick: null,
     playerEntityNetId: null,
-    movement: { x: 0, y: 0 },
+    movement: {
+      x: 0,
+      y: 0,
+    },
+    predictedPlayerPosition: null,
     entities: new Map(),
   };
 
-  private cameraRenderedPosition: NetPosition = {
-    x: 0,
-    y: 0,
-    z: 0,
-  };
+  private cameraRenderedPosition:
+    NetPosition = {
+      x: 0,
+      y: 0,
+      z: 0,
+    };
 
-  private cameraTargetPosition: NetPosition = {
-    x: 0,
-    y: 0,
-    z: 0,
-  };
+  private cameraTargetPosition:
+    NetPosition = {
+      x: 0,
+      y: 0,
+      z: 0,
+    };
 
   private cameraInitialized = false;
   private initialized = false;
-  private resizeObserver: ResizeObserver | null = null;
+
+  private resizeObserver:
+    ResizeObserver | null = null;
 
   public constructor(
-    private readonly hostElement: HTMLElement,
+    private readonly hostElement:
+      HTMLElement,
   ) {}
 
   public async initialize(): Promise<void> {
@@ -80,31 +98,44 @@ export class PixiRenderer {
       backgroundColor: 0x071019,
       antialias: true,
       autoDensity: true,
-      resolution: window.devicePixelRatio || 1,
-      powerPreference: 'high-performance',
+      resolution:
+        window.devicePixelRatio || 1,
+      powerPreference:
+        'high-performance',
     });
 
     const canvas =
       this.application.canvas as HTMLCanvasElement;
 
-    canvas.classList.add('pixi-canvas');
+    canvas.classList.add(
+      'pixi-canvas',
+    );
 
-    this.hostElement.replaceChildren(canvas);
+    this.hostElement.replaceChildren(
+      canvas,
+    );
 
-    this.gridContainer.addChild(this.gridGraphics);
+    this.gridContainer.addChild(
+      this.gridGraphics,
+    );
 
     this.application.stage.addChild(
       this.gridContainer,
       this.entityContainer,
     );
 
-    this.application.ticker.add(this.updateFrame);
+    this.application.ticker.add(
+      this.updateFrame,
+    );
 
-    this.resizeObserver = new ResizeObserver(() => {
-      this.resizeToHost();
-    });
+    this.resizeObserver =
+      new ResizeObserver(() => {
+        this.resizeToHost();
+      });
 
-    this.resizeObserver.observe(this.hostElement);
+    this.resizeObserver.observe(
+      this.hostElement,
+    );
 
     this.initialized = true;
 
@@ -112,7 +143,9 @@ export class PixiRenderer {
     this.synchronizeScene();
   }
 
-  public update(state: PixiRendererState): void {
+  public update(
+    state: PixiRendererState,
+  ): void {
     this.state = state;
 
     if (!this.initialized) {
@@ -127,9 +160,14 @@ export class PixiRenderer {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
 
-    this.application.ticker.remove(this.updateFrame);
+    this.application.ticker.remove(
+      this.updateFrame,
+    );
 
-    for (const entityView of this.entityViews.values()) {
+    for (
+      const entityView
+      of this.entityViews.values()
+    ) {
       entityView.container.destroy({
         children: true,
       });
@@ -159,11 +197,17 @@ export class PixiRenderer {
     const interpolationFactor =
       1 -
       Math.exp(
-        -INTERPOLATION_SPEED * deltaSeconds,
+        -INTERPOLATION_SPEED *
+          deltaSeconds,
       );
 
-    this.interpolateCamera(interpolationFactor);
-    this.interpolateEntities(interpolationFactor);
+    this.interpolateCamera(
+      interpolationFactor,
+    );
+
+    this.interpolateEntities(
+      interpolationFactor,
+    );
 
     this.updateEntityTransforms();
     this.redrawGrid();
@@ -176,12 +220,16 @@ export class PixiRenderer {
 
     const width = Math.max(
       1,
-      Math.floor(this.hostElement.clientWidth),
+      Math.floor(
+        this.hostElement.clientWidth,
+      ),
     );
 
     const height = Math.max(
       1,
-      Math.floor(this.hostElement.clientHeight),
+      Math.floor(
+        this.hostElement.clientHeight,
+      ),
     );
 
     this.application.renderer.resize(
@@ -197,9 +245,29 @@ export class PixiRenderer {
     this.removeMissingEntityViews();
     this.createMissingEntityViews();
     this.updateEntityTargets();
+    this.updateCameraTarget();
   }
 
   private updateCameraTarget(): void {
+    const predictedPosition =
+      this.state.predictedPlayerPosition;
+
+    if (predictedPosition !== null) {
+      this.cameraTargetPosition = {
+        ...predictedPosition,
+      };
+
+      if (!this.cameraInitialized) {
+        this.cameraRenderedPosition = {
+          ...predictedPosition,
+        };
+
+        this.cameraInitialized = true;
+      }
+
+      return;
+    }
+
     const playerEntityNetId =
       this.state.playerEntityNetId;
 
@@ -208,7 +276,9 @@ export class PixiRenderer {
     }
 
     const playerEntity =
-      this.state.entities.get(playerEntityNetId);
+      this.state.entities.get(
+        playerEntityNetId,
+      );
 
     if (!playerEntity) {
       return;
@@ -231,10 +301,16 @@ export class PixiRenderer {
 
   private removeMissingEntityViews(): void {
     for (
-      const [entityNetId, entityView]
-      of this.entityViews
+      const [
+        entityNetId,
+        entityView,
+      ] of this.entityViews
     ) {
-      if (this.state.entities.has(entityNetId)) {
+      if (
+        this.state.entities.has(
+          entityNetId,
+        )
+      ) {
         continue;
       }
 
@@ -246,13 +322,22 @@ export class PixiRenderer {
         children: true,
       });
 
-      this.entityViews.delete(entityNetId);
+      this.entityViews.delete(
+        entityNetId,
+      );
     }
   }
 
   private createMissingEntityViews(): void {
-    for (const entity of this.state.entities.values()) {
-      if (this.entityViews.has(entity.net_id)) {
+    for (
+      const entity
+      of this.state.entities.values()
+    ) {
+      if (
+        this.entityViews.has(
+          entity.net_id,
+        )
+      ) {
         continue;
       }
 
@@ -261,7 +346,10 @@ export class PixiRenderer {
         this.state.playerEntityNetId;
 
       const entityView =
-        this.createEntityView(entity, isPlayer);
+        this.createEntityView(
+          entity,
+          isPlayer,
+        );
 
       this.entityViews.set(
         entity.net_id,
@@ -275,10 +363,14 @@ export class PixiRenderer {
   }
 
   private updateEntityTargets(): void {
-    for (const entity of this.state.entities.values()) {
-      const entityView = this.entityViews.get(
-        entity.net_id,
-      );
+    for (
+      const entity
+      of this.state.entities.values()
+    ) {
+      const entityView =
+        this.entityViews.get(
+          entity.net_id,
+        );
 
       if (!entityView) {
         continue;
@@ -288,13 +380,29 @@ export class PixiRenderer {
         entity.net_id ===
         this.state.playerEntityNetId;
 
-      if (entityView.isPlayer !== isPlayer) {
+      if (
+        entityView.isPlayer !== isPlayer
+      ) {
         this.redrawEntityBody(
           entityView.body,
           isPlayer,
         );
 
-        entityView.isPlayer = isPlayer;
+        entityView.isPlayer =
+          isPlayer;
+      }
+
+      if (
+        isPlayer &&
+        this.state
+          .predictedPlayerPosition !== null
+      ) {
+        entityView.targetPosition = {
+          ...this.state
+            .predictedPlayerPosition,
+        };
+
+        continue;
       }
 
       entityView.targetPosition = {
@@ -312,17 +420,30 @@ export class PixiRenderer {
       return;
     }
 
-    this.cameraRenderedPosition.x = lerp(
-      this.cameraRenderedPosition.x,
-      this.cameraTargetPosition.x,
-      interpolationFactor,
-    );
+    if (
+      this.state
+        .predictedPlayerPosition !== null
+    ) {
+      this.cameraRenderedPosition = {
+        ...this.cameraTargetPosition,
+      };
 
-    this.cameraRenderedPosition.y = lerp(
-      this.cameraRenderedPosition.y,
-      this.cameraTargetPosition.y,
-      interpolationFactor,
-    );
+      return;
+    }
+
+    this.cameraRenderedPosition.x =
+      lerp(
+        this.cameraRenderedPosition.x,
+        this.cameraTargetPosition.x,
+        interpolationFactor,
+      );
+
+    this.cameraRenderedPosition.y =
+      lerp(
+        this.cameraRenderedPosition.y,
+        this.cameraTargetPosition.y,
+        interpolationFactor,
+      );
 
     this.cameraRenderedPosition.z =
       this.cameraTargetPosition.z;
@@ -331,18 +452,35 @@ export class PixiRenderer {
   private interpolateEntities(
     interpolationFactor: number,
   ): void {
-    for (const entityView of this.entityViews.values()) {
-      entityView.renderedPosition.x = lerp(
-        entityView.renderedPosition.x,
-        entityView.targetPosition.x,
-        interpolationFactor,
-      );
+    for (
+      const entityView
+      of this.entityViews.values()
+    ) {
+      if (
+        entityView.isPlayer &&
+        this.state
+          .predictedPlayerPosition !== null
+      ) {
+        entityView.renderedPosition = {
+          ...entityView.targetPosition,
+        };
 
-      entityView.renderedPosition.y = lerp(
-        entityView.renderedPosition.y,
-        entityView.targetPosition.y,
-        interpolationFactor,
-      );
+        continue;
+      }
+
+      entityView.renderedPosition.x =
+        lerp(
+          entityView.renderedPosition.x,
+          entityView.targetPosition.x,
+          interpolationFactor,
+        );
+
+      entityView.renderedPosition.y =
+        lerp(
+          entityView.renderedPosition.y,
+          entityView.targetPosition.y,
+          interpolationFactor,
+        );
 
       entityView.renderedPosition.z =
         entityView.targetPosition.z;
@@ -350,9 +488,13 @@ export class PixiRenderer {
   }
 
   private updateEntityTransforms(): void {
-    const viewportSize = this.getViewportSize();
+    const viewportSize =
+      this.getViewportSize();
 
-    for (const entityView of this.entityViews.values()) {
+    for (
+      const entityView
+      of this.entityViews.values()
+    ) {
       const screenPosition =
         this.worldToScreen(
           entityView.renderedPosition,
@@ -374,17 +516,25 @@ export class PixiRenderer {
     entity: EntitySnapshot,
     isPlayer: boolean,
   ): EntityView {
-    const container = new Container();
-    const body = new Graphics();
+    const container =
+      new Container();
 
-    this.redrawEntityBody(body, isPlayer);
+    const body =
+      new Graphics();
+
+    this.redrawEntityBody(
+      body,
+      isPlayer,
+    );
+
     container.addChild(body);
 
-    const initialPosition: NetPosition = {
-      x: entity.position.x,
-      y: entity.position.y,
-      z: entity.position.z,
-    };
+    const initialPosition:
+      NetPosition = {
+        x: entity.position.x,
+        y: entity.position.y,
+        z: entity.position.z,
+      };
 
     return {
       container,
@@ -405,15 +555,18 @@ export class PixiRenderer {
   ): void {
     body.clear();
 
-    const radius = isPlayer ? 12 : 10;
+    const radius =
+      isPlayer ? 12 : 10;
 
-    const fillColor = isPlayer
-      ? 0x7cffc4
-      : 0xffcc66;
+    const fillColor =
+      isPlayer
+        ? 0x7cffc4
+        : 0xffcc66;
 
-    const strokeColor = isPlayer
-      ? 0xeafff6
-      : 0xfff0c2;
+    const strokeColor =
+      isPlayer
+        ? 0xeafff6
+        : 0xfff0c2;
 
     body
       .circle(0, 0, radius)
@@ -425,7 +578,11 @@ export class PixiRenderer {
 
     if (isPlayer) {
       body
-        .circle(0, 0, radius + 5)
+        .circle(
+          0,
+          0,
+          radius + 5,
+        )
         .stroke({
           color: 0x7cffc4,
           width: 1,
@@ -435,7 +592,8 @@ export class PixiRenderer {
   }
 
   private redrawGrid(): void {
-    const viewportSize = this.getViewportSize();
+    const viewportSize =
+      this.getViewportSize();
 
     const cameraPixelX =
       this.cameraRenderedPosition.x *
@@ -445,18 +603,23 @@ export class PixiRenderer {
       this.cameraRenderedPosition.y *
       WORLD_SCALE;
 
-    const centerX = viewportSize.x / 2;
-    const centerY = viewportSize.y / 2;
+    const centerX =
+      viewportSize.x / 2;
 
-    const horizontalOffset = positiveModulo(
-      centerX - cameraPixelX,
-      WORLD_SCALE,
-    );
+    const centerY =
+      viewportSize.y / 2;
 
-    const verticalOffset = positiveModulo(
-      centerY - cameraPixelY,
-      WORLD_SCALE,
-    );
+    const horizontalOffset =
+      positiveModulo(
+        centerX - cameraPixelX,
+        WORLD_SCALE,
+      );
+
+    const verticalOffset =
+      positiveModulo(
+        centerY - cameraPixelY,
+        WORLD_SCALE,
+      );
 
     this.gridGraphics.clear();
 
@@ -466,6 +629,7 @@ export class PixiRenderer {
       x += WORLD_SCALE
     ) {
       this.gridGraphics.moveTo(x, 0);
+
       this.gridGraphics.lineTo(
         x,
         viewportSize.y,
@@ -478,6 +642,7 @@ export class PixiRenderer {
       y += WORLD_SCALE
     ) {
       this.gridGraphics.moveTo(0, y);
+
       this.gridGraphics.lineTo(
         viewportSize.x,
         y,
@@ -495,14 +660,16 @@ export class PixiRenderer {
         {
           x: 0,
           y: 0,
-          z: this.cameraRenderedPosition.z,
+          z:
+            this.cameraRenderedPosition.z,
         },
         viewportSize,
       );
 
     if (
       worldOriginScreen.x >= 0 &&
-      worldOriginScreen.x <= viewportSize.x
+      worldOriginScreen.x <=
+        viewportSize.x
     ) {
       this.gridGraphics.moveTo(
         worldOriginScreen.x,
@@ -517,7 +684,8 @@ export class PixiRenderer {
 
     if (
       worldOriginScreen.y >= 0 &&
-      worldOriginScreen.y <= viewportSize.y
+      worldOriginScreen.y <=
+        viewportSize.y
     ) {
       this.gridGraphics.moveTo(
         0,
@@ -563,12 +731,12 @@ export class PixiRenderer {
   private getViewportSize(): Vec2 {
     return {
       x:
-        this.application.renderer.width /
-        this.application.renderer.resolution,
+        this.application.renderer
+          .screen.width,
 
       y:
-        this.application.renderer.height /
-        this.application.renderer.resolution,
+        this.application.renderer
+          .screen.height,
     };
   }
 }
@@ -578,12 +746,18 @@ function lerp(
   target: number,
   factor: number,
 ): number {
-  return current + (target - current) * factor;
+  return (
+    current +
+    (target - current) * factor
+  );
 }
 
 function positiveModulo(
   value: number,
   divisor: number,
 ): number {
-  return ((value % divisor) + divisor) % divisor;
+  return (
+    (value % divisor + divisor) %
+    divisor
+  );
 }
