@@ -1,184 +1,197 @@
+import type { ClientComponent } from './components/clientComponent';
+import { NetworkIdentityComponent } from './components/networkIdentityComponent';
+import { TransformComponent } from './components/transformComponent';
 import type {
   EntityNetId,
   EntitySnapshot,
   NetPosition,
 } from './protocol';
 
-const POSITION_INTERPOLATION_SPEED = 14;
-
-const MAX_RENDER_DELTA_SECONDS = 0.1;
-
 export class ClientEntity {
-  public readonly netId: EntityNetId;
-
-  public prototype: string;
-
-  public readonly authoritativePosition:
-    NetPosition;
-
-  public readonly renderPosition:
-    NetPosition;
-
-  public lastServerTick: number;
+  private readonly components =
+    new Map<
+      string,
+      ClientComponent
+    >();
 
   public constructor(
     snapshot: EntitySnapshot,
     serverTick: number,
   ) {
-    this.netId =
-      snapshot.net_id;
+    this.addComponent(
+      new NetworkIdentityComponent(
+        snapshot,
+        serverTick,
+      ),
+    );
 
-    this.prototype =
-      snapshot.prototype;
+    this.addComponent(
+      new TransformComponent(
+        snapshot,
+      ),
+    );
+  }
 
-    this.authoritativePosition = {
-      x: snapshot.position.x,
-      y: snapshot.position.y,
-      z: snapshot.position.z,
-    };
+  public get netId(): EntityNetId {
+    return this.networkIdentity.netId;
+  }
 
-    this.renderPosition = {
-      x: snapshot.position.x,
-      y: snapshot.position.y,
-      z: snapshot.position.z,
-    };
+  public get prototype(): string {
+    return this.networkIdentity.prototype;
+  }
 
-    this.lastServerTick =
-      serverTick;
+  public get lastServerTick(): number {
+    return this.networkIdentity
+      .lastServerTick;
+  }
+
+  public get authoritativePosition():
+    NetPosition {
+    return this.transform
+      .authoritativePosition;
+  }
+
+  public get renderPosition():
+    NetPosition {
+    return this.transform
+      .renderPosition;
   }
 
   /**
    * Временная совместимость для систем,
-   * которые пока читают entity.position.
+   * которые читают entity.position.
    *
-   * position всегда означает авторитетную
-   * серверную позицию.
+   * position означает последнюю
+   * авторитетную серверную позицию.
    */
   public get position(): NetPosition {
     return this.authoritativePosition;
+  }
+
+  public addComponent(
+    component: ClientComponent,
+  ): void {
+    if (
+      this.components.has(
+        component.componentType,
+      )
+    ) {
+      throw new Error(
+        `Entity already has component: ${component.componentType}`,
+      );
+    }
+
+    this.components.set(
+      component.componentType,
+      component,
+    );
+  }
+
+  public removeComponent(
+    componentType: string,
+  ): boolean {
+    return this.components.delete(
+      componentType,
+    );
+  }
+
+  public hasComponent(
+    componentType: string,
+  ): boolean {
+    return this.components.has(
+      componentType,
+    );
+  }
+
+  public getComponent<
+    TComponent extends ClientComponent,
+  >(
+    componentType: string,
+  ): TComponent | undefined {
+    return this.components.get(
+      componentType,
+    ) as TComponent | undefined;
+  }
+
+  public requireComponent<
+    TComponent extends ClientComponent,
+  >(
+    componentType: string,
+  ): TComponent {
+    const component =
+      this.getComponent<TComponent>(
+        componentType,
+      );
+
+    if (!component) {
+      throw new Error(
+        `Entity ${this.netId} is missing component: ${componentType}`,
+      );
+    }
+
+    return component;
+  }
+
+  public getComponents():
+    readonly ClientComponent[] {
+    return [
+      ...this.components.values(),
+    ];
   }
 
   public applySnapshot(
     snapshot: EntitySnapshot,
     serverTick: number,
   ): boolean {
-    let changed = false;
-
     if (
-      this.prototype !==
-      snapshot.prototype
+      snapshot.net_id !==
+      this.netId
     ) {
-      this.prototype =
-        snapshot.prototype;
-
-      changed = true;
+      throw new Error(
+        `Cannot apply snapshot for entity ${snapshot.net_id} to entity ${this.netId}`,
+      );
     }
 
-    const zChanged =
-      this.authoritativePosition.z !==
-      snapshot.position.z;
+    const identityChanged =
+      this.networkIdentity
+        .applySnapshot(
+          snapshot,
+          serverTick,
+        );
 
-    if (
-      this.authoritativePosition.x !==
-      snapshot.position.x
-    ) {
-      this.authoritativePosition.x =
-        snapshot.position.x;
+    const transformChanged =
+      this.transform
+        .applySnapshot(
+          snapshot,
+        );
 
-      changed = true;
-    }
-
-    if (
-      this.authoritativePosition.y !==
-      snapshot.position.y
-    ) {
-      this.authoritativePosition.y =
-        snapshot.position.y;
-
-      changed = true;
-    }
-
-    if (zChanged) {
-      this.authoritativePosition.z =
-        snapshot.position.z;
-
-      changed = true;
-
-      /*
-       * При смене этажа нельзя плавно
-       * интерполировать сущность между слоями.
-       */
-      this.snapRenderToAuthoritative();
-    }
-
-    this.lastServerTick =
-      serverTick;
-
-    return changed;
+    return (
+      identityChanged ||
+      transformChanged
+    );
   }
 
   public updateRenderPosition(
     deltaSeconds: number,
   ): void {
-    const safeDeltaSeconds =
-      Math.min(
-        Math.max(deltaSeconds, 0),
-        MAX_RENDER_DELTA_SECONDS,
+    this.transform
+      .updateRenderPosition(
+        deltaSeconds,
       );
-
-    if (
-      this.renderPosition.z !==
-      this.authoritativePosition.z
-    ) {
-      this.snapRenderToAuthoritative();
-
-      return;
-    }
-
-    const interpolationFactor =
-      1 -
-      Math.exp(
-        -POSITION_INTERPOLATION_SPEED *
-          safeDeltaSeconds,
-      );
-
-    this.renderPosition.x +=
-      (
-        this.authoritativePosition.x -
-        this.renderPosition.x
-      ) *
-      interpolationFactor;
-
-    this.renderPosition.y +=
-      (
-        this.authoritativePosition.y -
-        this.renderPosition.y
-      ) *
-      interpolationFactor;
   }
 
   public setRenderPosition(
     position: NetPosition,
   ): void {
-    this.renderPosition.x =
-      position.x;
-
-    this.renderPosition.y =
-      position.y;
-
-    this.renderPosition.z =
-      position.z;
+    this.transform
+      .setRenderPosition(
+        position,
+      );
   }
 
   public snapRenderToAuthoritative(): void {
-    this.renderPosition.x =
-      this.authoritativePosition.x;
-
-    this.renderPosition.y =
-      this.authoritativePosition.y;
-
-    this.renderPosition.z =
-      this.authoritativePosition.z;
+    this.transform
+      .snapRenderToAuthoritative();
   }
 
   public toSnapshot(): EntitySnapshot {
@@ -190,10 +203,33 @@ export class ClientEntity {
         this.prototype,
 
       position: {
-        x: this.authoritativePosition.x,
-        y: this.authoritativePosition.y,
-        z: this.authoritativePosition.z,
+        x:
+          this.authoritativePosition.x,
+
+        y:
+          this.authoritativePosition.y,
+
+        z:
+          this.authoritativePosition.z,
       },
     };
+  }
+
+  private get networkIdentity():
+    NetworkIdentityComponent {
+    return this.requireComponent<
+      NetworkIdentityComponent
+    >(
+      NetworkIdentityComponent.type,
+    );
+  }
+
+  private get transform():
+    TransformComponent {
+    return this.requireComponent<
+      TransformComponent
+    >(
+      TransformComponent.type,
+    );
   }
 }
