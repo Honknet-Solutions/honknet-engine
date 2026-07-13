@@ -1,6 +1,7 @@
 import './style.css';
 
 import { ClientConnection } from './connection';
+import { ClientWorld } from './clientWorld';
 import { getOrCreateGuestIdentityId } from './identity';
 import { InputController } from './input';
 import {
@@ -13,7 +14,6 @@ import {
 } from './pixiRenderer';
 import type {
   EntityNetId,
-  EntitySnapshot,
   ServerMessage,
 } from './protocol';
 
@@ -139,9 +139,6 @@ let clientId: string | null = null;
 let playerEntityNetId:
   EntityNetId | null = null;
 
-let lastServerTick:
-  number | null = null;
-
 let localPlayerState:
   LocalPlayerControllerState = {
     clientSimulationTick: 0,
@@ -151,10 +148,8 @@ let localPlayerState:
     pendingInputCount: 0,
   };
 
-const entitiesByNetId = new Map<
-  EntityNetId,
-  EntitySnapshot
->();
+const clientWorld =
+  new ClientWorld();
 
 const inputController =
   new InputController();
@@ -199,9 +194,7 @@ const connection =
 
       playerEntityNetId = null;
 
-      lastServerTick = null;
-
-      entitiesByNetId.clear();
+      clientWorld.clear();
 
       localPlayerController
         .clearPlayer();
@@ -350,9 +343,7 @@ function handleWelcome(
   playerEntityNetId =
     message.data.entity_net_id;
 
-  lastServerTick = null;
-
-  entitiesByNetId.clear();
+  clientWorld.clear();
 
   localPlayerController
     .setPlayerEntity(
@@ -387,30 +378,25 @@ function handleSnapshot(
     { type: 'Snapshot' }
   >,
 ): void {
-  lastServerTick =
-    message.data.tick;
+  clientWorld.applySnapshot(
+    message.data.tick,
+    message.data.entities,
+  );
+
+  const serverTick =
+    clientWorld.getServerTick();
 
   setText(
     tickStatus,
-    String(lastServerTick),
+    serverTick === null
+      ? '-'
+      : String(serverTick),
   );
-
-  entitiesByNetId.clear();
-
-  for (
-    const entity
-    of message.data.entities
-  ) {
-    entitiesByNetId.set(
-      entity.net_id,
-      entity,
-    );
-  }
 
   const playerEntity =
     playerEntityNetId === null
       ? undefined
-      : entitiesByNetId.get(
+      : clientWorld.getEntity(
           playerEntityNetId,
         );
 
@@ -427,17 +413,20 @@ function handleSnapshot(
     localPlayerController.getState();
 
   writeLog(
-    `Snapshot serverTick=${message.data.tick}, clientTick=${currentLocalState.clientSimulationTick}, ackSeq=${currentLocalState.lastProcessedInputSeq ?? 'none'}, ackClientTick=${currentLocalState.lastProcessedClientTick ?? 'none'}, pending=${currentLocalState.pendingInputCount}, entities=${message.data.entities.length}`,
+    `Snapshot serverTick=${serverTick ?? 'none'}, clientTick=${currentLocalState.clientSimulationTick}, ackSeq=${currentLocalState.lastProcessedInputSeq ?? 'none'}, ackClientTick=${currentLocalState.lastProcessedClientTick ?? 'none'}, pending=${currentLocalState.pendingInputCount}, entities=${clientWorld.getEntityCount()}`,
   );
 
   updateRendererState();
 }
 
 function updateRendererState(): void {
+  const worldState =
+    clientWorld.getState();
+
   const rendererState:
     PixiRendererState = {
       serverTick:
-        lastServerTick,
+        worldState.serverTick,
 
       playerEntityNetId,
 
@@ -449,7 +438,7 @@ function updateRendererState(): void {
           .predictedPlayerPosition,
 
       entities:
-        entitiesByNetId,
+        worldState.entities,
     };
 
   pixiRenderer.update(
@@ -507,5 +496,7 @@ window.addEventListener(
     inputController.destroy();
 
     connection.disconnect();
+
+    clientWorld.clear();
   },
 );
