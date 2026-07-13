@@ -8,538 +8,204 @@ import {
 import type { ClientEntity } from './clientEntity';
 import type {
   EntityNetId,
+  MapSnapshot,
   NetPosition,
-  Vec2,
 } from './protocol';
 
-const WORLD_SCALE = 64;
-const ENTITY_RADIUS = 18;
+const SCALE = 48;
+const CAMERA_SPEED = 12;
 
-const CAMERA_INTERPOLATION_SPEED = 12;
-const MAX_RENDER_DELTA_SECONDS = 0.1;
-
-type RenderEntity = {
+type EntityView = {
   container: Container;
-  body: Graphics;
+  graphics: Graphics;
   label: Text;
-
-  prototype: string;
-  isLocalPlayer: boolean;
+  signature: string;
 };
 
 export type PixiRendererState = {
-  serverTick: number | null;
-
-  playerEntityNetId:
-    EntityNetId | null;
-
-  movement: Vec2;
-
-  predictedPlayerPosition:
-    NetPosition | null;
-
-  entities: ReadonlyMap<
-    EntityNetId,
-    ClientEntity
-  >;
+  map: MapSnapshot | null;
+  playerEntityNetId: EntityNetId | null;
+  predictedPlayerPosition: NetPosition | null;
+  entities: ReadonlyMap<EntityNetId, ClientEntity>;
 };
 
 export class PixiRenderer {
-  private readonly host:
-    HTMLElement;
-
-  private readonly application =
-    new Application();
-
-  private readonly worldContainer =
-    new Container();
-
-  private readonly entityViews =
-    new Map<
-      EntityNetId,
-      RenderEntity
-    >();
-
-  private state:
-    PixiRendererState = {
-      serverTick: null,
-
-      playerEntityNetId: null,
-
-      movement: {
-        x: 0,
-        y: 0,
-      },
-
-      predictedPlayerPosition: null,
-
-      entities: new Map(),
-    };
-
+  private readonly app = new Application();
+  private readonly mapLayer = new Container();
+  private readonly entityLayer = new Container();
+  private readonly views = new Map<EntityNetId, EntityView>();
+  private state: PixiRendererState = {
+    map: null,
+    playerEntityNetId: null,
+    predictedPlayerPosition: null,
+    entities: new Map(),
+  };
+  private renderedMapId: string | null = null;
   private cameraX = 0;
   private cameraY = 0;
-  private cameraZ = 0;
-
   private initialized = false;
 
-  public constructor(
-    host: HTMLElement,
-  ) {
-    this.host = host;
-  }
+  public constructor(private readonly host: HTMLElement) {}
 
-  public async initialize():
-    Promise<void> {
-    if (this.initialized) {
-      return;
-    }
-
-    await this.application.init({
+  public async initialize(): Promise<void> {
+    await this.app.init({
       resizeTo: this.host,
       antialias: true,
-      background: '#10131a',
+      background: '#070b11',
     });
-
-    this.application.stage.addChild(
-      this.worldContainer,
-    );
-
-    this.host.appendChild(
-      this.application.canvas,
-    );
-
-    this.application.ticker.add(
-      this.updateFrame,
-    );
-
+    this.app.stage.addChild(this.mapLayer);
+    this.app.stage.addChild(this.entityLayer);
+    this.host.appendChild(this.app.canvas);
+    this.app.ticker.add(this.frame);
     this.initialized = true;
   }
 
-  public update(
-    state: PixiRendererState,
-  ): void {
+  public update(state: PixiRendererState): void {
     this.state = state;
-
-    this.synchronizeEntityViews();
+    this.syncMap();
+    this.syncEntities();
   }
 
   public destroy(): void {
-    if (!this.initialized) {
-      return;
-    }
-
-    this.application.ticker.remove(
-      this.updateFrame,
-    );
-
-    for (
-      const view
-      of this.entityViews.values()
-    ) {
-      view.container.destroy({
-        children: true,
-      });
-    }
-
-    this.entityViews.clear();
-
-    this.application.destroy(
-      true,
-      {
-        children: true,
-      },
-    );
-
+    if (!this.initialized) return;
+    this.app.ticker.remove(this.frame);
+    this.app.destroy(true, { children: true });
+    this.views.clear();
     this.initialized = false;
   }
 
-  private synchronizeEntityViews(): void {
-    const activeEntityIds =
-      new Set<EntityNetId>();
+  private syncMap(): void {
+    if (!this.state.map || this.renderedMapId === this.state.map.id) {
+      return;
+    }
 
-    for (
-      const [
-        entityNetId,
-        entity,
-      ] of this.state.entities
-    ) {
-      activeEntityIds.add(
-        entityNetId,
-      );
+    this.mapLayer.removeChildren().forEach((child) => child.destroy());
+    const map = this.state.map;
 
-      const isLocalPlayer =
-        entityNetId ===
-        this.state.playerEntityNetId;
-
-      let view =
-        this.entityViews.get(
-          entityNetId,
-        );
-
-      if (!view) {
-        view =
-          this.createEntityView(
-            entityNetId,
-            entity.prototype,
-            isLocalPlayer,
-          );
-
-        this.entityViews.set(
-          entityNetId,
-          view,
-        );
-
-        this.worldContainer.addChild(
-          view.container,
-        );
-      }
-
-      if (
-        view.prototype !==
-        entity.prototype
-      ) {
-        view.prototype =
-          entity.prototype;
-
-        this.updateEntityLabel(
-          view,
-          entityNetId,
-          entity.prototype,
-        );
-      }
-
-      if (
-        view.isLocalPlayer !==
-        isLocalPlayer
-      ) {
-        view.isLocalPlayer =
-          isLocalPlayer;
-
-        this.redrawEntityBody(
-          view.body,
-          isLocalPlayer,
-        );
+    for (let y = 0; y < map.height; y += 1) {
+      for (let x = 0; x < map.width; x += 1) {
+        const tile = map.tiles[y * map.width + x];
+        const graphic = new Graphics();
+        graphic.rect(x * SCALE, y * SCALE, SCALE, SCALE);
+        graphic.fill(tile === 1 ? 0x303743 : 0x101720);
+        graphic.stroke({ width: 1, color: 0x202a36, alpha: 0.65 });
+        this.mapLayer.addChild(graphic);
       }
     }
 
-    for (
-      const [
-        entityNetId,
-        view,
-      ] of this.entityViews
-    ) {
-      if (
-        activeEntityIds.has(
-          entityNetId,
-        )
-      ) {
-        continue;
+    this.renderedMapId = map.id;
+  }
+
+  private syncEntities(): void {
+    const active = new Set<EntityNetId>();
+
+    for (const [netId, entity] of this.state.entities) {
+      active.add(netId);
+      const signature = this.signature(entity, netId === this.state.playerEntityNetId);
+      let view = this.views.get(netId);
+
+      if (!view) {
+        view = {
+          container: new Container(),
+          graphics: new Graphics(),
+          label: new Text({
+            text: '',
+            style: { fill: 0xffffff, fontSize: 11, align: 'center' },
+          }),
+          signature: '',
+        };
+        view.label.anchor.set(0.5, 0);
+        view.label.position.set(0, 20);
+        view.container.addChild(view.graphics, view.label);
+        this.entityLayer.addChild(view.container);
+        this.views.set(netId, view);
       }
 
-      this.worldContainer.removeChild(
-        view.container,
-      );
+      if (view.signature !== signature) {
+        view.signature = signature;
+        this.redraw(view, entity, netId === this.state.playerEntityNetId);
+      }
+    }
 
-      view.container.destroy({
-        children: true,
-      });
-
-      this.entityViews.delete(
-        entityNetId,
-      );
+    for (const [netId, view] of this.views) {
+      if (!active.has(netId)) {
+        view.container.destroy({ children: true });
+        this.views.delete(netId);
+      }
     }
   }
 
-  private readonly updateFrame = (
-    ticker: {
-      deltaMS: number;
-    },
-  ): void => {
-    const deltaSeconds =
-      Math.min(
-        Math.max(
-          ticker.deltaMS / 1000,
-          0,
-        ),
-        MAX_RENDER_DELTA_SECONDS,
-      );
-
-    this.updateEntityPresentation(
-      deltaSeconds,
-    );
-
-    this.updateCamera(
-      deltaSeconds,
-    );
-  };
-
-  private updateEntityPresentation(
-    deltaSeconds: number,
-  ): void {
-    const cameraZ =
-      this.getCameraZ();
-
-    for (
-      const [
-        entityNetId,
-        entity,
-      ] of this.state.entities
-    ) {
-      const view =
-        this.entityViews.get(
-          entityNetId,
-        );
-
-      if (!view) {
-        continue;
-      }
-
-      const isLocalPlayer =
-        entityNetId ===
-        this.state.playerEntityNetId;
-
-      if (
-        isLocalPlayer &&
-        this.state
-          .predictedPlayerPosition
-      ) {
-        entity.setRenderPosition(
-          this.state
-            .predictedPlayerPosition,
-        );
-      } else {
-        entity.updateRenderPosition(
-          deltaSeconds,
-        );
-      }
-
-      view.container.visible =
-        entity.renderPosition.z ===
-        cameraZ;
-
-      view.container.position.set(
-        entity.renderPosition.x *
-          WORLD_SCALE,
-
-        entity.renderPosition.y *
-          WORLD_SCALE,
-      );
-    }
-  }
-
-  private updateCamera(
-    deltaSeconds: number,
-  ): void {
-    const cameraTarget =
-      this.getCameraTarget();
+  private readonly frame = (ticker: { deltaMS: number }): void => {
+    const delta = Math.min(ticker.deltaMS / 1000, 0.1);
+    const cameraTarget = this.getCameraTarget();
 
     if (cameraTarget) {
-      this.cameraZ =
-        cameraTarget.z;
-
-      const usingPrediction =
-        this.state
-          .predictedPlayerPosition !==
-        null;
-
-      if (usingPrediction) {
-        this.cameraX =
-          cameraTarget.x;
-
-        this.cameraY =
-          cameraTarget.y;
-      } else {
-        const interpolationFactor =
-          1 -
-          Math.exp(
-            -CAMERA_INTERPOLATION_SPEED *
-              deltaSeconds,
-          );
-
-        this.cameraX +=
-          (
-            cameraTarget.x -
-            this.cameraX
-          ) *
-          interpolationFactor;
-
-        this.cameraY +=
-          (
-            cameraTarget.y -
-            this.cameraY
-          ) *
-          interpolationFactor;
-      }
+      const factor = 1 - Math.exp(-CAMERA_SPEED * delta);
+      this.cameraX += (cameraTarget.x - this.cameraX) * factor;
+      this.cameraY += (cameraTarget.y - this.cameraY) * factor;
     }
 
-    const viewportSize =
-      this.getViewportSize();
+    for (const [netId, entity] of this.state.entities) {
+      const view = this.views.get(netId);
+      if (!view) continue;
 
-    this.worldContainer.position.set(
-      viewportSize.width / 2 -
-        this.cameraX *
-          WORLD_SCALE,
-
-      viewportSize.height / 2 -
-        this.cameraY *
-          WORLD_SCALE,
-    );
-  }
-
-  private getCameraTarget():
-    NetPosition | undefined {
-    if (
-      this.state
-        .predictedPlayerPosition
-    ) {
-      return this.state
-        .predictedPlayerPosition;
+      const position = netId === this.state.playerEntityNetId && this.state.predictedPlayerPosition
+        ? this.state.predictedPlayerPosition
+        : entity.renderPosition;
+      view.container.position.set(position.x * SCALE, position.y * SCALE);
+      view.container.alpha = entity.player?.online === false ? 0.45 : 1;
     }
 
-    if (
-      this.state.playerEntityNetId ===
-      null
-    ) {
+    const screen = this.app.renderer.screen;
+    const offsetX = screen.width / 2 - this.cameraX * SCALE;
+    const offsetY = screen.height / 2 - this.cameraY * SCALE;
+    this.mapLayer.position.set(offsetX, offsetY);
+    this.entityLayer.position.set(offsetX, offsetY);
+  };
+
+  private getCameraTarget(): NetPosition | undefined {
+    if (this.state.predictedPlayerPosition) {
+      return this.state.predictedPlayerPosition;
+    }
+    if (this.state.playerEntityNetId === null) {
       return undefined;
     }
-
-    return this.state.entities.get(
-      this.state.playerEntityNetId,
-    )?.renderPosition;
+    return this.state.entities.get(this.state.playerEntityNetId)?.renderPosition;
   }
 
-  private getCameraZ(): number {
-    if (
-      this.state
-        .predictedPlayerPosition
-    ) {
-      return this.state
-        .predictedPlayerPosition.z;
-    }
-
-    if (
-      this.state.playerEntityNetId ===
-      null
-    ) {
-      return this.cameraZ;
-    }
-
-    return (
-      this.state.entities.get(
-        this.state.playerEntityNetId,
-      )?.renderPosition.z ??
-      this.cameraZ
-    );
-  }
-
-  private createEntityView(
-    entityNetId: EntityNetId,
-    prototype: string,
-    isLocalPlayer: boolean,
-  ): RenderEntity {
-    const container =
-      new Container();
-
-    const body =
-      new Graphics();
-
-    this.redrawEntityBody(
-      body,
-      isLocalPlayer,
-    );
-
-    const label =
-      new Text({
-        text: '',
-
-        style: {
-          fill: 0xffffff,
-          fontSize: 12,
-          align: 'center',
-        },
-      });
-
-    label.anchor.set(
-      0.5,
-      0,
-    );
-
-    label.position.set(
-      0,
-      ENTITY_RADIUS + 8,
-    );
-
-    container.addChild(
-      body,
-    );
-
-    container.addChild(
-      label,
-    );
-
-    const view: RenderEntity = {
-      container,
-      body,
-      label,
-      prototype,
-      isLocalPlayer,
-    };
-
-    this.updateEntityLabel(
-      view,
-      entityNetId,
-      prototype,
-    );
-
-    return view;
-  }
-
-  private redrawEntityBody(
-    body: Graphics,
-    isLocalPlayer: boolean,
-  ): void {
-    body.clear();
-
-    body.circle(
-      0,
-      0,
-      ENTITY_RADIUS,
-    );
-
-    body.fill(
-      isLocalPlayer
-        ? 0x6ee7ff
-        : 0xffc857,
-    );
-
-    body.stroke({
-      width: 3,
-      color: 0xffffff,
-      alpha: 0.8,
+  private signature(entity: ClientEntity, local: boolean): string {
+    return JSON.stringify({
+      prototype: entity.prototype,
+      local,
+      door: entity.door,
+      item: entity.item,
+      player: entity.player,
     });
   }
 
-  private updateEntityLabel(
-    view: RenderEntity,
-    entityNetId: EntityNetId,
-    prototype: string,
-  ): void {
-    view.label.text =
-      `${prototype}\n#${entityNetId}`;
-  }
+  private redraw(view: EntityView, entity: ClientEntity, local: boolean): void {
+    const graphics = view.graphics;
+    graphics.clear();
 
-  private getViewportSize(): {
-    width: number;
-    height: number;
-  } {
-    return {
-      width:
-        this.application.renderer
-          .screen.width,
+    if (entity.door) {
+      if (entity.door.open) {
+        graphics.rect(-4, -20, 8, 40).fill(0x67d391);
+      } else {
+        graphics.rect(-20, -6, 40, 12).fill(0xc78555);
+      }
+      view.label.text = entity.door.open ? 'Open door' : 'Closed door';
+      return;
+    }
 
-      height:
-        this.application.renderer
-          .screen.height,
-    };
+    if (entity.item) {
+      graphics.circle(0, 0, 9).fill(0xffd166);
+      graphics.stroke({ width: 2, color: 0xffffff });
+      view.label.text = entity.item.name;
+      return;
+    }
+
+    graphics.circle(0, 0, 15).fill(local ? 0x6ee7ff : 0xff8f70);
+    graphics.stroke({ width: 3, color: 0xffffff, alpha: 0.8 });
+    view.label.text = entity.player?.display_name ?? entity.prototype;
   }
 }

@@ -1,31 +1,11 @@
-//! Setting-agnostic core primitives for Space Station 15.
+//! Setting-agnostic ECS primitives for Honknet.
 
-use honknet_protocol::{EntityNetId, Vec2};
-use serde::{Deserialize, Serialize};
+mod components;
+mod entity;
+mod system;
+mod world;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Transform {
-    pub map_id: String,
-    pub position: Vec2,
-    pub rotation: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NetworkIdentity {
-    pub net_id: EntityNetId,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PrototypeRef {
-    pub id: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TileMapChunk {
-    pub map_id: String,
-    pub chunk_x: i32,
-    pub chunk_y: i32,
-    pub width: u16,
-    pub height: u16,
-    pub tiles: Vec<u32>,
-}
+pub use components::{NetworkIdentity, PrototypeRef, Transform};
+pub use entity::{Component, Entity, EntityId};
+pub use system::{System, SystemManager};
+pub use world::{World, WorldError};

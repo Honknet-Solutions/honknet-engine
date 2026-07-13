@@ -11,10 +11,45 @@ export type NetPosition = {
   z: number;
 };
 
+export type MapSnapshot = {
+  id: string;
+  width: number;
+  height: number;
+  tiles: number[];
+};
+
+export type ComponentSnapshot =
+  | {
+      component: 'Player';
+      data: {
+        display_name: string;
+        online: boolean;
+      };
+    }
+  | {
+      component: 'Door';
+      data: {
+        open: boolean;
+      };
+    }
+  | {
+      component: 'Item';
+      data: {
+        name: string;
+      };
+    }
+  | {
+      component: 'Inventory';
+      data: {
+        items: string[];
+      };
+    };
+
 export type EntitySnapshot = {
   net_id: EntityNetId;
   prototype: string;
   position: NetPosition;
+  components: ComponentSnapshot[];
 };
 
 export type ClientMessage =
@@ -34,15 +69,15 @@ export type ClientMessage =
       };
     }
   | {
-      type: 'Chat';
-      data: {
-        text: string;
-      };
-    }
-  | {
       type: 'Interact';
       data: {
         target: EntityNetId;
+      };
+    }
+  | {
+      type: 'Chat';
+      data: {
+        text: string;
       };
     };
 
@@ -52,16 +87,15 @@ export type ServerMessage =
       data: {
         client_id: string;
         entity_net_id: EntityNetId;
+        map: MapSnapshot;
       };
     }
   | {
       type: 'Snapshot';
       data: {
         tick: number;
-        last_processed_input_seq:
-          number | null;
-        last_processed_client_tick:
-          number | null;
+        last_processed_input_seq: number | null;
+        last_processed_client_tick: number | null;
         entities: EntitySnapshot[];
       };
     }
@@ -69,6 +103,12 @@ export type ServerMessage =
       type: 'Chat';
       data: {
         from: string;
+        text: string;
+      };
+    }
+  | {
+      type: 'System';
+      data: {
         text: string;
       };
     }

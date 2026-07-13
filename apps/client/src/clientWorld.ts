@@ -3,177 +3,81 @@ import type {
   EntityNetId,
   EntitySnapshot,
 } from './protocol';
+import type { ClientSystem } from './systems/clientSystem';
+import { ClientSystemManager } from './systems/clientSystemManager';
 
-export type ClientWorldState = {
-  serverTick: number | null;
-
-  entities: ReadonlyMap<
-    EntityNetId,
-    ClientEntity
-  >;
-};
-
-export type ClientWorldSnapshotResult = {
-  serverTick: number;
-
-  createdEntityIds: EntityNetId[];
-
-  updatedEntityIds: EntityNetId[];
-
-  removedEntityIds: EntityNetId[];
+export type SnapshotResult = {
+  created: number;
+  updated: number;
+  removed: number;
 };
 
 export class ClientWorld {
-  private serverTick:
-    number | null = null;
+  private serverTick: number | null = null;
+  private readonly entities = new Map<EntityNetId, ClientEntity>();
+  private readonly systems = new ClientSystemManager();
 
-  private readonly entities =
-    new Map<
-      EntityNetId,
-      ClientEntity
-    >();
+  public addSystem(system: ClientSystem): void {
+    this.systems.add(this, system);
+  }
 
   public applySnapshot(
     serverTick: number,
     snapshots: readonly EntitySnapshot[],
-  ): ClientWorldSnapshotResult {
-    const createdEntityIds:
-      EntityNetId[] = [];
-
-    const updatedEntityIds:
-      EntityNetId[] = [];
-
-    const removedEntityIds:
-      EntityNetId[] = [];
-
-    const receivedEntityIds =
-      new Set<EntityNetId>();
+  ): SnapshotResult {
+    const received = new Set<EntityNetId>();
+    let created = 0;
+    let updated = 0;
+    let removed = 0;
 
     for (const snapshot of snapshots) {
-      receivedEntityIds.add(
-        snapshot.net_id,
-      );
+      received.add(snapshot.net_id);
+      const existing = this.entities.get(snapshot.net_id);
 
-      const existingEntity =
-        this.entities.get(
-          snapshot.net_id,
-        );
-
-      if (!existingEntity) {
-        const entity =
-          new ClientEntity(
-            snapshot,
-            serverTick,
-          );
-
-        this.entities.set(
-          entity.netId,
-          entity,
-        );
-
-        createdEntityIds.push(
-          entity.netId,
-        );
-
-        continue;
-      }
-
-      const changed =
-        existingEntity.applySnapshot(
-          snapshot,
-          serverTick,
-        );
-
-      if (changed) {
-        updatedEntityIds.push(
-          existingEntity.netId,
-        );
+      if (!existing) {
+        const entity = new ClientEntity(snapshot, serverTick);
+        this.entities.set(entity.netId, entity);
+        this.systems.created(this, entity);
+        created += 1;
+      } else if (existing.applySnapshot(snapshot, serverTick)) {
+        this.systems.updated(this, existing);
+        updated += 1;
       }
     }
 
-    for (
-      const entityNetId
-      of this.entities.keys()
-    ) {
-      if (
-        receivedEntityIds.has(
-          entityNetId,
-        )
-      ) {
-        continue;
+    for (const [netId, entity] of this.entities) {
+      if (!received.has(netId)) {
+        this.systems.removed(this, entity);
+        this.entities.delete(netId);
+        removed += 1;
       }
-
-      this.entities.delete(
-        entityNetId,
-      );
-
-      removedEntityIds.push(
-        entityNetId,
-      );
     }
 
-    this.serverTick =
-      serverTick;
-
-    return {
-      serverTick,
-      createdEntityIds,
-      updatedEntityIds,
-      removedEntityIds,
-    };
+    this.serverTick = serverTick;
+    return { created, updated, removed };
   }
 
-  public clear(): EntityNetId[] {
-    const removedEntityIds = [
-      ...this.entities.keys(),
-    ];
+  public update(deltaSeconds: number): void {
+    this.systems.update(this, deltaSeconds);
+  }
 
-    this.serverTick = null;
-
+  public clear(): void {
+    for (const entity of this.entities.values()) {
+      this.systems.removed(this, entity);
+    }
     this.entities.clear();
-
-    return removedEntityIds;
+    this.serverTick = null;
   }
 
-  public getServerTick():
-    number | null {
+  public getServerTick(): number | null {
     return this.serverTick;
   }
 
-  public getEntity(
-    entityNetId: EntityNetId,
-  ): ClientEntity | undefined {
-    return this.entities.get(
-      entityNetId,
-    );
+  public getEntity(netId: EntityNetId): ClientEntity | undefined {
+    return this.entities.get(netId);
   }
 
-  public hasEntity(
-    entityNetId: EntityNetId,
-  ): boolean {
-    return this.entities.has(
-      entityNetId,
-    );
-  }
-
-  public getEntityCount(): number {
-    return this.entities.size;
-  }
-
-  public getEntities(): ReadonlyMap<
-    EntityNetId,
-    ClientEntity
-  > {
+  public getEntities(): ReadonlyMap<EntityNetId, ClientEntity> {
     return this.entities;
-  }
-
-  public getState(): ClientWorldState {
-    return {
-      serverTick:
-        this.serverTick,
-
-      entities:
-        this.entities,
-    };
   }
 }

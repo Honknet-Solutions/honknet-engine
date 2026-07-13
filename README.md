@@ -1,39 +1,38 @@
-# Space Station 15
+# Space Station 15 — vertical slice
 
-**Space Station 15** is a browser-first open-source framework for multiplayer 2D immersive simulation games.
+Self-contained Rust authoritative server and TypeScript/PixiJS browser client.
 
-It is developed by **Honknet Solutions** as a modular foundation for persistent roleplay sandboxes: cyberpunk cities, space stations, colonies, bunkers, fantasy settlements and other simulation-heavy worlds.
+Implemented:
 
-Space Station 15 is **not** a Space Station 14 fork, not a RobustToolbox fork, and not tied to space station mechanics. Space stations, atmospherics and shuttles are optional game modules, not core assumptions.
+- WebSocket handshake and stable guest identity;
+- authoritative 30 TPS server simulation;
+- entity/component/system foundations on server and client;
+- full-world replication with client lifecycle tracking;
+- input sequence ACK, heartbeat, prediction and reconciliation;
+- remote-entity interpolation;
+- tile map, walls, a working door and collision;
+- interactable item pickup and authoritative inventory;
+- multiplayer chat;
+- content prototypes and a JSON debug map.
 
-## Architecture
+## Install
 
-```text
-Browser Client / TypeScript
-        ↓
-Protocol / schema-first messages
-        ↓
-Rust Authoritative Server
-        ↓
-ECS World Simulation
-        ↓
-Modules / Game Content
+```bash
+npm install
+cargo test
+npm run typecheck
 ```
 
-## Repository layout
+## Run
 
-```text
-apps/
-  client/        Browser client
-  server/        Rust authoritative server
-crates/
-  honknet-core/     Core world/ECS primitives
-  honknet-protocol/ Shared network message definitions
-docs/            Architecture and design docs
-modules/         Optional gameplay modules
+```bash
+cargo run -p honknet-server
 ```
 
-## Current status
+Second terminal:
 
-Initial clean repository scaffold.
+```bash
+npm run dev:client
+```
 
+Open the Vite URL in two browser windows. Use WASD or arrows, `E` to interact, and the chat box to send messages.

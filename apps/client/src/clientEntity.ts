@@ -1,5 +1,6 @@
 import type { ClientComponent } from './components/clientComponent';
 import { NetworkIdentityComponent } from './components/networkIdentityComponent';
+import { ReplicatedStateComponent } from './components/replicatedStateComponent';
 import { TransformComponent } from './components/transformComponent';
 import type {
   EntityNetId,
@@ -8,228 +9,90 @@ import type {
 } from './protocol';
 
 export class ClientEntity {
-  private readonly components =
-    new Map<
-      string,
-      ClientComponent
-    >();
+  private readonly components = new Map<string, ClientComponent>();
 
-  public constructor(
-    snapshot: EntitySnapshot,
-    serverTick: number,
-  ) {
-    this.addComponent(
-      new NetworkIdentityComponent(
-        snapshot,
-        serverTick,
-      ),
-    );
-
-    this.addComponent(
-      new TransformComponent(
-        snapshot,
-      ),
-    );
+  public constructor(snapshot: EntitySnapshot, serverTick: number) {
+    this.addComponent(new NetworkIdentityComponent(snapshot, serverTick));
+    this.addComponent(new TransformComponent(snapshot));
+    this.addComponent(new ReplicatedStateComponent(snapshot));
   }
 
   public get netId(): EntityNetId {
-    return this.networkIdentity.netId;
+    return this.identity.netId;
   }
 
   public get prototype(): string {
-    return this.networkIdentity.prototype;
+    return this.identity.prototype;
   }
 
-  public get lastServerTick(): number {
-    return this.networkIdentity
-      .lastServerTick;
-  }
-
-  public get authoritativePosition():
-    NetPosition {
-    return this.transform
-      .authoritativePosition;
-  }
-
-  public get renderPosition():
-    NetPosition {
-    return this.transform
-      .renderPosition;
-  }
-
-  /**
-   * Временная совместимость для систем,
-   * которые читают entity.position.
-   *
-   * position означает последнюю
-   * авторитетную серверную позицию.
-   */
   public get position(): NetPosition {
-    return this.authoritativePosition;
+    return this.transform.authoritativePosition;
   }
 
-  public addComponent(
-    component: ClientComponent,
-  ): void {
-    if (
-      this.components.has(
-        component.componentType,
-      )
-    ) {
-      throw new Error(
-        `Entity already has component: ${component.componentType}`,
-      );
+  public get renderPosition(): NetPosition {
+    return this.transform.renderPosition;
+  }
+
+  public get player() {
+    return this.replicated.get('Player')?.data;
+  }
+
+  public get door() {
+    return this.replicated.get('Door')?.data;
+  }
+
+  public get item() {
+    return this.replicated.get('Item')?.data;
+  }
+
+  public get inventory() {
+    return this.replicated.get('Inventory')?.data;
+  }
+
+  public addComponent(component: ClientComponent): void {
+    if (this.components.has(component.componentType)) {
+      throw new Error(`Duplicate component ${component.componentType}`);
+    }
+    this.components.set(component.componentType, component);
+  }
+
+  public getComponent<T extends ClientComponent>(type: string): T | undefined {
+    return this.components.get(type) as T | undefined;
+  }
+
+  public applySnapshot(snapshot: EntitySnapshot, serverTick: number): boolean {
+    if (snapshot.net_id !== this.netId) {
+      throw new Error('Snapshot entity id mismatch');
     }
 
-    this.components.set(
-      component.componentType,
-      component,
-    );
+    const identityChanged = this.identity.applySnapshot(snapshot, serverTick);
+    const transformChanged = this.transform.applySnapshot(snapshot);
+    const replicatedChanged = this.replicated.applySnapshot(snapshot);
+
+    return identityChanged || transformChanged || replicatedChanged;
   }
 
-  public removeComponent(
-    componentType: string,
-  ): boolean {
-    return this.components.delete(
-      componentType,
-    );
+  public updateRenderPosition(deltaSeconds: number): void {
+    this.transform.update(deltaSeconds);
   }
 
-  public hasComponent(
-    componentType: string,
-  ): boolean {
-    return this.components.has(
-      componentType,
-    );
+  private get identity(): NetworkIdentityComponent {
+    return this.require(NetworkIdentityComponent.type);
   }
 
-  public getComponent<
-    TComponent extends ClientComponent,
-  >(
-    componentType: string,
-  ): TComponent | undefined {
-    return this.components.get(
-      componentType,
-    ) as TComponent | undefined;
+  private get transform(): TransformComponent {
+    return this.require(TransformComponent.type);
   }
 
-  public requireComponent<
-    TComponent extends ClientComponent,
-  >(
-    componentType: string,
-  ): TComponent {
-    const component =
-      this.getComponent<TComponent>(
-        componentType,
-      );
+  private get replicated(): ReplicatedStateComponent {
+    return this.require(ReplicatedStateComponent.type);
+  }
 
+  private require<T extends ClientComponent>(type: string): T {
+    const component = this.getComponent<T>(type);
     if (!component) {
-      throw new Error(
-        `Entity ${this.netId} is missing component: ${componentType}`,
-      );
+      throw new Error(`Missing component ${type}`);
     }
-
     return component;
-  }
-
-  public getComponents():
-    readonly ClientComponent[] {
-    return [
-      ...this.components.values(),
-    ];
-  }
-
-  public applySnapshot(
-    snapshot: EntitySnapshot,
-    serverTick: number,
-  ): boolean {
-    if (
-      snapshot.net_id !==
-      this.netId
-    ) {
-      throw new Error(
-        `Cannot apply snapshot for entity ${snapshot.net_id} to entity ${this.netId}`,
-      );
-    }
-
-    const identityChanged =
-      this.networkIdentity
-        .applySnapshot(
-          snapshot,
-          serverTick,
-        );
-
-    const transformChanged =
-      this.transform
-        .applySnapshot(
-          snapshot,
-        );
-
-    return (
-      identityChanged ||
-      transformChanged
-    );
-  }
-
-  public updateRenderPosition(
-    deltaSeconds: number,
-  ): void {
-    this.transform
-      .updateRenderPosition(
-        deltaSeconds,
-      );
-  }
-
-  public setRenderPosition(
-    position: NetPosition,
-  ): void {
-    this.transform
-      .setRenderPosition(
-        position,
-      );
-  }
-
-  public snapRenderToAuthoritative(): void {
-    this.transform
-      .snapRenderToAuthoritative();
-  }
-
-  public toSnapshot(): EntitySnapshot {
-    return {
-      net_id:
-        this.netId,
-
-      prototype:
-        this.prototype,
-
-      position: {
-        x:
-          this.authoritativePosition.x,
-
-        y:
-          this.authoritativePosition.y,
-
-        z:
-          this.authoritativePosition.z,
-      },
-    };
-  }
-
-  private get networkIdentity():
-    NetworkIdentityComponent {
-    return this.requireComponent<
-      NetworkIdentityComponent
-    >(
-      NetworkIdentityComponent.type,
-    );
-  }
-
-  private get transform():
-    TransformComponent {
-    return this.requireComponent<
-      TransformComponent
-    >(
-      TransformComponent.type,
-    );
   }
 }

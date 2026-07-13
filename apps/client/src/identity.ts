@@ -1,24 +1,12 @@
-const GUEST_IDENTITY_STORAGE_KEY =
-  'honknet.guestIdentityId';
+const STORAGE_KEY = 'honknet.guestIdentityId';
 
 export function getOrCreateGuestIdentityId(): string {
-  const existingIdentityId = localStorage.getItem(
-    GUEST_IDENTITY_STORAGE_KEY,
-  );
-
-  if (
-    existingIdentityId &&
-    existingIdentityId.trim().length > 0
-  ) {
-    return existingIdentityId;
+  const existing = localStorage.getItem(STORAGE_KEY)?.trim();
+  if (existing) {
+    return existing;
   }
 
-  const newIdentityId = `guest-${crypto.randomUUID()}`;
-
-  localStorage.setItem(
-    GUEST_IDENTITY_STORAGE_KEY,
-    newIdentityId,
-  );
-
-  return newIdentityId;
+  const identity = `guest-${crypto.randomUUID()}`;
+  localStorage.setItem(STORAGE_KEY, identity);
+  return identity;
 }

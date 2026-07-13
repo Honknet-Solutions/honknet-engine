@@ -14,491 +14,702 @@ import {
 } from './pixiRenderer';
 import type {
   EntityNetId,
+  MapSnapshot,
   ServerMessage,
 } from './protocol';
+import { TransformInterpolationSystem } from './systems/transformInterpolationSystem';
 
-const CLIENT_VERSION = '0.1.0-dev';
+const CLIENT_VERSION = '0.2.0-vertical-slice';
+const DEFAULT_SERVER_URL = 'ws://127.0.0.1:3015';
 
-const DEFAULT_SERVER_URL =
-  'ws://127.0.0.1:3015';
+void bootstrap().catch((error: unknown) => {
+  console.error('Client bootstrap failed:', error);
 
-const app =
-  document.querySelector<HTMLDivElement>(
-    '#app',
-  );
+  const root =
+    document.querySelector<HTMLDivElement>('#app');
 
-if (!app) {
-  throw new Error(
-    'Missing #app root element',
-  );
-}
+  if (root) {
+    root.innerHTML = `
+      <main class="shell">
+        <section class="panel">
+          <h1>Client startup failed</h1>
+          <pre>${escapeHtml(String(error))}</pre>
+        </section>
+      </main>
+    `;
+  }
+});
 
-app.innerHTML = `
-  <main class="shell">
-    <section class="panel">
-      <p class="eyebrow">Honknet Solutions</p>
-      <h1>Space Station 15</h1>
+async function bootstrap(): Promise<void> {
+  const app =
+    document.querySelector<HTMLDivElement>('#app');
 
-      <p>
-        Browser-first modular 2D multiplayer immersive simulation framework.
-      </p>
-
-      <label class="field">
-        <span>Server URL</span>
-        <input
-          id="server-url"
-          value="${DEFAULT_SERVER_URL}"
-        />
-      </label>
-
-      <button id="connect">Connect</button>
-
-      <div class="status-grid">
-        <div>
-          <span class="status-label">Identity</span>
-          <strong id="identity-status">-</strong>
-        </div>
-
-        <div>
-          <span class="status-label">Client</span>
-          <strong id="client-status">
-            not connected
-          </strong>
-        </div>
-
-        <div>
-          <span class="status-label">Entity</span>
-          <strong id="entity-status">-</strong>
-        </div>
-
-        <div>
-          <span class="status-label">Tick</span>
-          <strong id="tick-status">-</strong>
-        </div>
-      </div>
-
-      <div id="viewport"></div>
-
-      <p class="hint">
-        Use WASD or arrow keys after connecting.
-      </p>
-
-      <pre id="log">Client booted. Waiting for connection.</pre>
-    </section>
-  </main>
-`;
-
-const log =
-  document.querySelector<HTMLPreElement>(
-    '#log',
-  );
-
-const connectButton =
-  document.querySelector<HTMLButtonElement>(
-    '#connect',
-  );
-
-const serverUrlInput =
-  document.querySelector<HTMLInputElement>(
-    '#server-url',
-  );
-
-const viewportElement =
-  document.querySelector<HTMLElement>(
-    '#viewport',
-  );
-
-const identityStatus =
-  document.querySelector<HTMLElement>(
-    '#identity-status',
-  );
-
-const clientStatus =
-  document.querySelector<HTMLElement>(
-    '#client-status',
-  );
-
-const entityStatus =
-  document.querySelector<HTMLElement>(
-    '#entity-status',
-  );
-
-const tickStatus =
-  document.querySelector<HTMLElement>(
-    '#tick-status',
-  );
-
-if (!viewportElement) {
-  throw new Error(
-    'Missing #viewport element',
-  );
-}
-
-let clientId: string | null = null;
-
-let playerEntityNetId:
-  EntityNetId | null = null;
-
-let localPlayerState:
-  LocalPlayerControllerState = {
-    clientSimulationTick: 0,
-    lastProcessedInputSeq: null,
-    lastProcessedClientTick: null,
-    predictedPlayerPosition: null,
-    pendingInputCount: 0,
-  };
-
-const clientWorld =
-  new ClientWorld();
-
-const inputController =
-  new InputController();
-
-const pixiRenderer =
-  new PixiRenderer(
-    viewportElement,
-  );
-
-const playerIdentityId =
-  getOrCreateGuestIdentityId();
-
-const connection =
-  new ClientConnection({
-    onOpen: () => {
-      writeLog(
-        'WebSocket opened. Sending Hello.',
-      );
-
-      connection.send({
-        type: 'Hello',
-        data: {
-          client_version:
-            CLIENT_VERSION,
-
-          identity_id:
-            playerIdentityId,
-        },
-      });
-    },
-
-    onMessage: (message) => {
-      handleServerMessage(message);
-    },
-
-    onClose: () => {
-      writeLog(
-        'WebSocket closed.',
-      );
-
-      clientId = null;
-
-      playerEntityNetId = null;
-
-      clientWorld.clear();
-
-      localPlayerController
-        .clearPlayer();
-
-      setText(
-        clientStatus,
-        'disconnected',
-      );
-
-      setText(
-        entityStatus,
-        '-',
-      );
-
-      setText(
-        tickStatus,
-        '-',
-      );
-
-      updateRendererState();
-    },
-
-    onError: (message) => {
-      writeLog(message);
-    },
-  });
-
-const localPlayerController =
-  new LocalPlayerController({
-    getMovement: () =>
-      inputController.getMovement(),
-
-    isConnected: () =>
-      connection.isConnected,
-
-    sendMessage: (message) =>
-      connection.send(message),
-
-    onFrame: (state) => {
-      localPlayerState = state;
-
-      updateRendererState();
-    },
-
-    onPredictionSnap: (
-      errorDistance,
-    ) => {
-      writeLog(
-        `Prediction snapped to server. error=${errorDistance.toFixed(3)}`,
-      );
-    },
-  });
-
-await pixiRenderer.initialize();
-
-localPlayerController.start();
-
-setText(
-  identityStatus,
-  playerIdentityId,
-);
-
-writeLog(
-  `Guest identity: ${playerIdentityId}`,
-);
-
-updateRendererState();
-
-function setText(
-  element: HTMLElement | null,
-  value: string,
-): void {
-  if (!element) {
-    return;
+  if (!app) {
+    throw new Error('Missing #app');
   }
 
-  element.textContent = value;
-}
+  app.innerHTML = `
+    <main class="shell">
+      <section class="panel">
+        <header>
+          <div>
+            <p class="eyebrow">Honknet Solutions</p>
+            <h1>Space Station 15</h1>
+          </div>
 
-function writeLog(
-  message: string,
-): void {
-  if (!log) {
-    return;
-  }
+          <div class="connect-row">
+            <input
+              id="server-url"
+              value="${DEFAULT_SERVER_URL}"
+            />
 
-  const currentLines =
-    log.textContent?.split('\n') ??
-    [];
+            <button id="connect">
+              Connect
+            </button>
+          </div>
+        </header>
 
-  const nextLines = [
-    ...currentLines,
-    `${new Date().toLocaleTimeString()} ${message}`,
-  ];
+        <div class="status-grid">
+          <div>
+            <span>Identity</span>
+            <strong id="identity-status">-</strong>
+          </div>
 
-  log.textContent =
-    nextLines
-      .slice(-18)
-      .join('\n');
-}
+          <div>
+            <span>Client</span>
+            <strong id="client-status">
+              disconnected
+            </strong>
+          </div>
 
-function handleServerMessage(
-  message: ServerMessage,
-): void {
-  switch (message.type) {
-    case 'Welcome':
-      handleWelcome(message);
-      break;
+          <div>
+            <span>Entity</span>
+            <strong id="entity-status">-</strong>
+          </div>
 
-    case 'Snapshot':
-      handleSnapshot(message);
-      break;
+          <div>
+            <span>Server tick</span>
+            <strong id="tick-status">-</strong>
+          </div>
+        </div>
 
-    case 'Chat':
-      writeLog(
-        `[${message.data.from}] ${message.data.text}`,
-      );
-      break;
+        <div class="game-layout">
+          <div>
+            <div id="viewport"></div>
 
-    case 'Error':
-      writeLog(
-        `Server error: ${message.data.message}`,
-      );
-      break;
+            <p class="hint">
+              WASD / arrows — move. E — interact.
+            </p>
+          </div>
 
-    default: {
-      const unreachable: never =
-        message;
+          <aside>
+            <h2>Inventory</h2>
 
-      writeLog(
-        `Unknown server message: ${JSON.stringify(unreachable)}`,
-      );
-    }
-  }
-}
+            <ul id="inventory">
+              <li>Empty</li>
+            </ul>
 
-function handleWelcome(
-  message: Extract<
-    ServerMessage,
-    { type: 'Welcome' }
-  >,
-): void {
-  clientId =
-    message.data.client_id;
+            <h2>Chat</h2>
 
-  playerEntityNetId =
-    message.data.entity_net_id;
+            <div id="chat-log"></div>
 
-  clientWorld.clear();
+            <form id="chat-form">
+              <input
+                id="chat-input"
+                maxlength="500"
+                autocomplete="off"
+                placeholder="Message"
+              />
 
-  localPlayerController
-    .setPlayerEntity(
-      playerEntityNetId,
+              <button>Send</button>
+            </form>
+          </aside>
+        </div>
+
+        <pre id="debug-log">Client booted.</pre>
+      </section>
+    </main>
+  `;
+
+  const viewport =
+    requireElement<HTMLElement>(
+      '#viewport',
     );
 
-  setText(
-    clientStatus,
-    clientId,
-  );
-
-  setText(
-    entityStatus,
-    String(playerEntityNetId),
-  );
-
-  setText(
-    tickStatus,
-    '-',
-  );
-
-  writeLog(
-    `Welcome received. client_id=${clientId}, player_entity=${playerEntityNetId}`,
-  );
-
-  updateRendererState();
-}
-
-function handleSnapshot(
-  message: Extract<
-    ServerMessage,
-    { type: 'Snapshot' }
-  >,
-): void {
-  const snapshotResult =
-    clientWorld.applySnapshot(
-      message.data.tick,
-      message.data.entities,
+  const serverUrlInput =
+    requireElement<HTMLInputElement>(
+      '#server-url',
     );
 
-  const serverTick =
-    clientWorld.getServerTick();
+  const connectButton =
+    requireElement<HTMLButtonElement>(
+      '#connect',
+    );
 
-  setText(
-    tickStatus,
-    serverTick === null
-      ? '-'
-      : String(serverTick),
+  const identityStatus =
+    requireElement<HTMLElement>(
+      '#identity-status',
+    );
+
+  const clientStatus =
+    requireElement<HTMLElement>(
+      '#client-status',
+    );
+
+  const entityStatus =
+    requireElement<HTMLElement>(
+      '#entity-status',
+    );
+
+  const tickStatus =
+    requireElement<HTMLElement>(
+      '#tick-status',
+    );
+
+  const inventoryElement =
+    requireElement<HTMLUListElement>(
+      '#inventory',
+    );
+
+  const chatLog =
+    requireElement<HTMLDivElement>(
+      '#chat-log',
+    );
+
+  const chatForm =
+    requireElement<HTMLFormElement>(
+      '#chat-form',
+    );
+
+  const chatInput =
+    requireElement<HTMLInputElement>(
+      '#chat-input',
+    );
+
+  const debugLog =
+    requireElement<HTMLPreElement>(
+      '#debug-log',
+    );
+
+  const identityId =
+    getOrCreateGuestIdentityId();
+
+  const world =
+    new ClientWorld();
+
+  world.addSystem(
+    new TransformInterpolationSystem(),
   );
 
-  const playerEntity =
-    playerEntityNetId === null
-      ? undefined
-      : clientWorld.getEntity(
+  const renderer =
+    new PixiRenderer(viewport);
+
+  let map: MapSnapshot | null = null;
+
+  let playerEntityNetId:
+    EntityNetId | null = null;
+
+  let localState:
+    LocalPlayerControllerState = {
+      clientSimulationTick: 0,
+      lastProcessedInputSeq: null,
+      lastProcessedClientTick: null,
+      predictedPlayerPosition: null,
+      pendingInputCount: 0,
+    };
+
+  const connection =
+    new ClientConnection({
+      onOpen: () => {
+        logDebug(
+          'Socket opened; sending Hello.',
+        );
+
+        connection.send({
+          type: 'Hello',
+          data: {
+            client_version:
+              CLIENT_VERSION,
+
+            identity_id:
+              identityId,
+          },
+        });
+      },
+
+      onMessage:
+        handleServerMessage,
+
+      onClose: () => {
+        playerEntityNetId = null;
+        map = null;
+
+        world.clear();
+        localController.clearPlayer();
+
+        clientStatus.textContent =
+          'disconnected';
+
+        entityStatus.textContent = '-';
+        tickStatus.textContent = '-';
+
+        updateInventory();
+        renderState();
+      },
+
+      onError:
+        logDebug,
+    });
+
+  const input =
+    new InputController({
+      onInteract: () => {
+        interactWithNearest();
+      },
+    });
+
+  const localController =
+    new LocalPlayerController({
+      getMovement: () =>
+        input.getMovement(),
+
+      isConnected: () =>
+        connection.isConnected,
+
+      sendMessage: (message) =>
+        connection.send(message),
+
+      onFrame: (state) => {
+        localState = state;
+        renderState();
+      },
+
+      onPredictionSnap: (
+        distance,
+      ) => {
+        logDebug(
+          `Prediction snap: ${distance.toFixed(3)}`,
+        );
+      },
+    });
+
+  await renderer.initialize();
+
+  localController.start();
+
+  identityStatus.textContent =
+    identityId;
+
+  let lastFrame =
+    performance.now();
+
+  let frameId =
+    requestAnimationFrame(
+      updateFrame,
+    );
+
+  connectButton.addEventListener(
+    'click',
+    () => {
+      const url =
+        serverUrlInput.value.trim() ||
+        DEFAULT_SERVER_URL;
+
+      if (!connection.connect(url)) {
+        logDebug(
+          'Connection is already active.',
+        );
+
+        return;
+      }
+
+      clientStatus.textContent =
+        'connecting';
+    },
+  );
+
+  chatForm.addEventListener(
+    'submit',
+    (event) => {
+      event.preventDefault();
+
+      const text =
+        chatInput.value.trim();
+
+      if (
+        !text ||
+        !connection.send({
+          type: 'Chat',
+          data: {
+            text,
+          },
+        })
+      ) {
+        return;
+      }
+
+      chatInput.value = '';
+    },
+  );
+
+  window.addEventListener(
+    'beforeunload',
+    () => {
+      cancelAnimationFrame(frameId);
+
+      localController.stop();
+      input.destroy();
+      renderer.destroy();
+      connection.disconnect();
+      world.clear();
+    },
+  );
+
+  function updateFrame(
+    now: number,
+  ): void {
+    const delta =
+      Math.min(
+        Math.max(
+          (
+            now -
+            lastFrame
+          ) / 1000,
+          0,
+        ),
+        0.1,
+      );
+
+    lastFrame = now;
+
+    world.update(delta);
+    renderState();
+
+    frameId =
+      requestAnimationFrame(
+        updateFrame,
+      );
+  }
+
+  function handleServerMessage(
+    message: ServerMessage,
+  ): void {
+    switch (message.type) {
+      case 'Welcome':
+        map =
+          message.data.map;
+
+        playerEntityNetId =
+          message.data.entity_net_id;
+
+        world.clear();
+
+        localController.setPlayerEntity(
           playerEntityNetId,
         );
 
-  localPlayerController
-    .handleSnapshot(
-      playerEntity,
-      message.data
-        .last_processed_input_seq,
-      message.data
-        .last_processed_client_tick,
-    );
+        clientStatus.textContent =
+          message.data.client_id;
 
-  const currentLocalState =
-    localPlayerController.getState();
+        entityStatus.textContent =
+          String(playerEntityNetId);
 
-  writeLog(
-    `Snapshot serverTick=${serverTick ?? 'none'}, clientTick=${currentLocalState.clientSimulationTick}, ackSeq=${currentLocalState.lastProcessedInputSeq ?? 'none'}, ackClientTick=${currentLocalState.lastProcessedClientTick ?? 'none'}, pending=${currentLocalState.pendingInputCount}, entities=${clientWorld.getEntityCount()}, created=${snapshotResult.createdEntityIds.length}, updated=${snapshotResult.updatedEntityIds.length}, removed=${snapshotResult.removedEntityIds.length}`,
-  );
+        addChat(
+          'system',
+          'Connected to the server.',
+        );
 
-  updateRendererState();
-}
+        break;
 
-function updateRendererState(): void {
-  const worldState =
-    clientWorld.getState();
+      case 'Snapshot': {
+        const result =
+          world.applySnapshot(
+            message.data.tick,
+            message.data.entities,
+          );
 
-  const rendererState:
-    PixiRendererState = {
-      serverTick:
-        worldState.serverTick,
+        tickStatus.textContent =
+          String(message.data.tick);
 
-      playerEntityNetId,
+        const player =
+          playerEntityNetId === null
+            ? undefined
+            : world.getEntity(
+                playerEntityNetId,
+              );
 
-      movement:
-        inputController.getMovement(),
+        localController.handleSnapshot(
+          player,
+          message.data
+            .last_processed_input_seq,
+          message.data
+            .last_processed_client_tick,
+        );
 
-      predictedPlayerPosition:
-        localPlayerState
-          .predictedPlayerPosition,
+        updateInventory();
 
-      entities:
-        worldState.entities,
-    };
+        logDebug(
+          `tick=${message.data.tick} entities=${message.data.entities.length} ` +
+            `created=${result.created} updated=${result.updated} removed=${result.removed}`,
+        );
 
-  pixiRenderer.update(
-    rendererState,
-  );
-}
+        break;
+      }
 
-function connectToServer(): void {
-  if (
-    connection.isConnected ||
-    connection.isConnecting
-  ) {
-    writeLog(
-      'Connection is already active.',
-    );
+      case 'Chat':
+        addChat(
+          message.data.from,
+          message.data.text,
+        );
 
-    return;
+        break;
+
+      case 'System':
+        addChat(
+          'system',
+          message.data.text,
+        );
+
+        break;
+
+      case 'Error':
+        addChat(
+          'error',
+          message.data.message,
+        );
+
+        break;
+
+      default: {
+        const unreachable: never =
+          message;
+
+        throw new Error(
+          `Unhandled server message: ${JSON.stringify(unreachable)}`,
+        );
+      }
+    }
+
+    renderState();
   }
 
-  const serverUrl =
-    serverUrlInput?.value.trim() ||
-    DEFAULT_SERVER_URL;
+  function interactWithNearest(): void {
+    if (
+      playerEntityNetId === null ||
+      !connection.isConnected
+    ) {
+      return;
+    }
 
-  writeLog(
-    `Connecting to ${serverUrl} ...`,
-  );
+    const player =
+      world.getEntity(
+        playerEntityNetId,
+      );
 
-  const started =
-    connection.connect(
-      serverUrl,
+    const origin =
+      localState
+        .predictedPlayerPosition ??
+      player?.position;
+
+    if (!origin) {
+      return;
+    }
+
+    let nearest: {
+      id: EntityNetId;
+      distance: number;
+    } | null = null;
+
+    for (
+      const [
+        netId,
+        entity,
+      ] of world.getEntities()
+    ) {
+      if (
+        netId ===
+          playerEntityNetId ||
+        (
+          !entity.door &&
+          !entity.item
+        )
+      ) {
+        continue;
+      }
+
+      const distance =
+        Math.hypot(
+          origin.x -
+            entity.position.x,
+
+          origin.y -
+            entity.position.y,
+        );
+
+      if (
+        distance <= 1.75 &&
+        (
+          nearest === null ||
+          distance <
+            nearest.distance
+        )
+      ) {
+        nearest = {
+          id: netId,
+          distance,
+        };
+      }
+    }
+
+    if (nearest) {
+      connection.send({
+        type: 'Interact',
+        data: {
+          target:
+            nearest.id,
+        },
+      });
+
+      return;
+    }
+
+    addChat(
+      'system',
+      'Nothing nearby to interact with.',
+    );
+  }
+
+  function updateInventory(): void {
+    const inventory =
+      playerEntityNetId === null
+        ? undefined
+        : world.getEntity(
+            playerEntityNetId,
+          )?.inventory;
+
+    inventoryElement.replaceChildren();
+
+    if (
+      !inventory ||
+      inventory.items.length === 0
+    ) {
+      const item =
+        document.createElement('li');
+
+      item.textContent = 'Empty';
+
+      inventoryElement.appendChild(
+        item,
+      );
+
+      return;
+    }
+
+    for (
+      const name
+      of inventory.items
+    ) {
+      const item =
+        document.createElement('li');
+
+      item.textContent = name;
+
+      inventoryElement.appendChild(
+        item,
+      );
+    }
+  }
+
+  function renderState(): void {
+    const state:
+      PixiRendererState = {
+        map,
+
+        playerEntityNetId,
+
+        predictedPlayerPosition:
+          localState
+            .predictedPlayerPosition,
+
+        entities:
+          world.getEntities(),
+      };
+
+    renderer.update(state);
+  }
+
+  function addChat(
+    from: string,
+    text: string,
+  ): void {
+    const line =
+      document.createElement('div');
+
+    const name =
+      document.createElement(
+        'strong',
+      );
+
+    name.textContent =
+      `${from}: `;
+
+    line.append(
+      name,
+      document.createTextNode(
+        text,
+      ),
     );
 
-  if (!started) {
-    writeLog(
-      'Failed to start connection.',
-    );
+    chatLog.appendChild(line);
+
+    chatLog.scrollTop =
+      chatLog.scrollHeight;
+  }
+
+  function logDebug(
+    message: string,
+  ): void {
+    const lines =
+      debugLog.textContent?.split(
+        '\n',
+      ) ?? [];
+
+    debugLog.textContent = [
+      ...lines,
+
+      `${new Date().toLocaleTimeString()} ${message}`,
+    ]
+      .slice(-10)
+      .join('\n');
   }
 }
 
-connectButton?.addEventListener(
-  'click',
-  () => {
-    connectToServer();
+function requireElement<
+  TElement extends Element,
+>(
+  selector: string,
+): TElement {
+  const element =
+    document.querySelector<TElement>(
+      selector,
+    );
 
-    window.focus();
-  },
-);
+  if (!element) {
+    throw new Error(
+      `Missing element ${selector}`,
+    );
+  }
 
-window.addEventListener(
-  'beforeunload',
-  () => {
-    localPlayerController.stop();
+  return element;
+}
 
-    pixiRenderer.destroy();
-
-    inputController.destroy();
-
-    connection.disconnect();
-
-    clientWorld.clear();
-  },
-);
+function escapeHtml(
+  value: string,
+): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}

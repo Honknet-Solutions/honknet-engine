@@ -31,45 +31,43 @@ export class ClientConnection {
     }
 
     const socket = new WebSocket(serverUrl);
-
     this.socket = socket;
 
     socket.addEventListener('open', () => {
-      if (this.socket !== socket) {
-        return;
+      if (this.socket === socket) {
+        this.handlers.onOpen?.();
       }
-
-      this.handlers.onOpen?.();
     });
 
-    socket.addEventListener(
-      'message',
-      (event: MessageEvent<string>) => {
-        if (this.socket !== socket) {
-          return;
-        }
-
-        this.handleIncomingMessage(event.data);
-      },
-    );
-
-    socket.addEventListener('close', () => {
+    socket.addEventListener('message', (event: MessageEvent<string>) => {
       if (this.socket !== socket) {
         return;
       }
 
-      this.socket = null;
-      this.handlers.onClose?.();
+      try {
+        this.handlers.onMessage?.(
+          JSON.parse(event.data) as ServerMessage,
+        );
+      } catch (error) {
+        this.handlers.onError?.(
+          `Failed to parse server message: ${String(error)}`,
+        );
+      }
+    });
+
+    socket.addEventListener('close', () => {
+      if (this.socket === socket) {
+        this.socket = null;
+        this.handlers.onClose?.();
+      }
     });
 
     socket.addEventListener('error', () => {
-      if (this.socket !== socket) {
-        return;
+      if (this.socket === socket) {
+        this.handlers.onError?.(
+          'WebSocket error. Is the Rust server running?',
+        );
       }
-
-      this.handlers.onError?.(
-        'WebSocket error. Is the Rust server running?',
-      );
     });
 
     return true;
@@ -81,36 +79,19 @@ export class ClientConnection {
     }
 
     this.socket.send(JSON.stringify(message));
-
     return true;
   }
 
   public disconnect(): void {
     const socket = this.socket;
-
-    if (!socket) {
-      return;
-    }
-
     this.socket = null;
 
     if (
-      socket.readyState === WebSocket.OPEN ||
-      socket.readyState === WebSocket.CONNECTING
+      socket &&
+      (socket.readyState === WebSocket.OPEN ||
+        socket.readyState === WebSocket.CONNECTING)
     ) {
       socket.close();
-    }
-  }
-
-  private handleIncomingMessage(rawMessage: string): void {
-    try {
-      const message = JSON.parse(rawMessage) as ServerMessage;
-
-      this.handlers.onMessage?.(message);
-    } catch (error) {
-      this.handlers.onError?.(
-        `Failed to parse server message: ${String(error)}`,
-      );
     }
   }
 }

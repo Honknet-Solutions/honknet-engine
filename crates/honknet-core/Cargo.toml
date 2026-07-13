@@ -7,5 +7,5 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-serde.workspace = true
 honknet-protocol = { path = "../honknet-protocol" }
+serde.workspace = true

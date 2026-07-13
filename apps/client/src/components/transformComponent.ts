@@ -4,143 +4,48 @@ import type {
   NetPosition,
 } from '../protocol';
 
-const POSITION_INTERPOLATION_SPEED = 14;
+const INTERPOLATION_SPEED = 14;
 
-const MAX_RENDER_DELTA_SECONDS = 0.1;
+export class TransformComponent implements ClientComponent {
+  public static readonly type = 'transform';
+  public readonly componentType = TransformComponent.type;
+  public readonly authoritativePosition: NetPosition;
+  public readonly renderPosition: NetPosition;
 
-export class TransformComponent
-  implements ClientComponent
-{
-  public static readonly type =
-    'transform';
-
-  public readonly componentType =
-    TransformComponent.type;
-
-  public readonly authoritativePosition:
-    NetPosition;
-
-  public readonly renderPosition:
-    NetPosition;
-
-  public constructor(
-    snapshot: EntitySnapshot,
-  ) {
-    this.authoritativePosition = {
-      x: snapshot.position.x,
-      y: snapshot.position.y,
-      z: snapshot.position.z,
-    };
-
-    this.renderPosition = {
-      x: snapshot.position.x,
-      y: snapshot.position.y,
-      z: snapshot.position.z,
-    };
+  public constructor(snapshot: EntitySnapshot) {
+    this.authoritativePosition = { ...snapshot.position };
+    this.renderPosition = { ...snapshot.position };
   }
 
-  public applySnapshot(
-    snapshot: EntitySnapshot,
-  ): boolean {
-    let changed = false;
+  public applySnapshot(snapshot: EntitySnapshot): boolean {
+    const changed =
+      this.authoritativePosition.x !== snapshot.position.x ||
+      this.authoritativePosition.y !== snapshot.position.y ||
+      this.authoritativePosition.z !== snapshot.position.z;
+    const zChanged = this.authoritativePosition.z !== snapshot.position.z;
 
-    const zChanged =
-      this.authoritativePosition.z !==
-      snapshot.position.z;
-
-    if (
-      this.authoritativePosition.x !==
-      snapshot.position.x
-    ) {
-      this.authoritativePosition.x =
-        snapshot.position.x;
-
-      changed = true;
-    }
-
-    if (
-      this.authoritativePosition.y !==
-      snapshot.position.y
-    ) {
-      this.authoritativePosition.y =
-        snapshot.position.y;
-
-      changed = true;
-    }
-
+    Object.assign(this.authoritativePosition, snapshot.position);
     if (zChanged) {
-      this.authoritativePosition.z =
-        snapshot.position.z;
-
-      changed = true;
-
-      this.snapRenderToAuthoritative();
+      this.snap();
     }
 
     return changed;
   }
 
-  public updateRenderPosition(
-    deltaSeconds: number,
-  ): void {
-    const safeDeltaSeconds =
-      Math.min(
-        Math.max(deltaSeconds, 0),
-        MAX_RENDER_DELTA_SECONDS,
-      );
-
-    if (
-      this.renderPosition.z !==
-      this.authoritativePosition.z
-    ) {
-      this.snapRenderToAuthoritative();
-
+  public update(deltaSeconds: number): void {
+    if (this.renderPosition.z !== this.authoritativePosition.z) {
+      this.snap();
       return;
     }
 
-    const interpolationFactor =
-      1 -
-      Math.exp(
-        -POSITION_INTERPOLATION_SPEED *
-          safeDeltaSeconds,
-      );
-
+    const factor = 1 - Math.exp(-INTERPOLATION_SPEED * Math.min(deltaSeconds, 0.1));
     this.renderPosition.x +=
-      (
-        this.authoritativePosition.x -
-        this.renderPosition.x
-      ) *
-      interpolationFactor;
-
+      (this.authoritativePosition.x - this.renderPosition.x) * factor;
     this.renderPosition.y +=
-      (
-        this.authoritativePosition.y -
-        this.renderPosition.y
-      ) *
-      interpolationFactor;
+      (this.authoritativePosition.y - this.renderPosition.y) * factor;
   }
 
-  public setRenderPosition(
-    position: NetPosition,
-  ): void {
-    this.renderPosition.x =
-      position.x;
-
-    this.renderPosition.y =
-      position.y;
-
-    this.renderPosition.z =
-      position.z;
-  }
-
-  public snapRenderToAuthoritative(): void {
-    this.renderPosition.x =
-      this.authoritativePosition.x;
-
-    this.renderPosition.y =
-      this.authoritativePosition.y;
-
-    this.renderPosition.z =
-      this.authoritativePosition.z;
+  public snap(): void {
+    Object.assign(this.renderPosition, this.authoritativePosition);
   }
 }

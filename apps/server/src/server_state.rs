@@ -4,46 +4,47 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Result;
+use honknet_core::{EntityId, NetworkIdentity, PrototypeRef, SystemManager, Transform, World};
 use honknet_protocol::{
-    ClientId, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId, ServerMessage, Vec2,
+    ClientId, ComponentSnapshot, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId,
+    ServerMessage, Vec2,
 };
-use tokio::sync::RwLock;
 
-pub type SharedServerState = Arc<RwLock<ServerState>>;
+use crate::{
+    components::{
+        ColliderComponent, DoorComponent, InventoryComponent, ItemComponent, PlayerComponent,
+        PlayerInputComponent,
+    },
+    game_map::GameMap,
+    prototypes::{PrototypeCatalog, PrototypeKind},
+    systems::{InputTimeoutSystem, MovementSystem},
+};
 
 const PLAYER_MOVE_SPEED: f32 = 4.0;
-
 const PLAYER_INPUT_TIMEOUT: Duration = Duration::from_millis(1500);
+const INTERACTION_RANGE: f32 = 1.75;
+const PVS_RADIUS: f32 = 24.0;
+const PLAYER_PROTOTYPE: &str = "debug.player";
+const DOOR_PROTOTYPE: &str = "debug.door";
+const WRENCH_PROTOTYPE: &str = "debug.item.wrench";
 
-#[derive(Debug, Clone)]
 pub struct ServerState {
     tick: u64,
     next_entity_net_id: EntityNetId,
-    entities: Vec<EntitySnapshot>,
-    players: Vec<PlayerRecord>,
-    player_inputs: HashMap<EntityNetId, PlayerInputState>,
+    world: World,
+    systems: SystemManager,
+    players: HashMap<PlayerIdentityId, PlayerRecord>,
+    network_entities: HashMap<EntityNetId, EntityId>,
+    map: Arc<GameMap>,
+    prototypes: PrototypeCatalog,
 }
 
 #[derive(Debug, Clone)]
 pub struct PlayerRecord {
-    pub identity_id: PlayerIdentityId,
     pub client_id: Option<ClientId>,
+    pub entity_id: EntityId,
     pub entity_net_id: EntityNetId,
-    pub connection_state: PlayerConnectionState,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlayerConnectionState {
-    Online,
-    Disconnected,
-}
-
-#[derive(Debug, Clone)]
-pub struct PlayerInputState {
-    pub last_sequence: Option<u32>,
-    pub last_client_tick: Option<u32>,
-    pub movement: Vec2,
-    pub last_received_at: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,39 +54,39 @@ pub enum InputUpdateResult {
     EntityMissing,
 }
 
-impl PlayerInputState {
-    pub fn new() -> Self {
-        Self {
-            last_sequence: None,
-            last_client_tick: None,
-            movement: Vec2 { x: 0.0, y: 0.0 },
-            last_received_at: None,
-        }
-    }
-}
-
-impl Default for PlayerInputState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ServerState {
-    pub fn new_debug() -> Self {
-        Self {
+    pub fn new_debug() -> Result<Self> {
+        let map = Arc::new(GameMap::load_debug()?);
+        let prototypes = PrototypeCatalog::load()?;
+        let mut systems = SystemManager::new();
+
+        assert!(systems.add(InputTimeoutSystem::new(PLAYER_INPUT_TIMEOUT)));
+        assert!(systems.add(MovementSystem::new(PLAYER_MOVE_SPEED, map.clone())));
+
+        let mut state = Self {
             tick: 0,
             next_entity_net_id: 1,
-            entities: Vec::new(),
-            players: Vec::new(),
-            player_inputs: HashMap::new(),
-        }
+            world: World::new(),
+            systems,
+            players: HashMap::new(),
+            network_entities: HashMap::new(),
+            map,
+            prototypes,
+        };
+
+        state.spawn_door();
+        state.spawn_item(WRENCH_PROTOTYPE, Vec2 { x: 4.5, y: 4.5 });
+
+        Ok(state)
     }
 
     pub fn advance_tick(&mut self, delta_seconds: f32) {
         self.tick = self.tick.saturating_add(1);
+        self.systems.update(&mut self.world, delta_seconds);
+    }
 
-        self.clear_stale_movement();
-        self.apply_movement(delta_seconds);
+    pub fn map_snapshot(&self) -> honknet_protocol::MapSnapshot {
+        self.map.snapshot()
     }
 
     pub fn connect_player(
@@ -93,56 +94,88 @@ impl ServerState {
         client_id: ClientId,
         identity_id: PlayerIdentityId,
     ) -> EntityNetId {
-        if let Some(player) = self
-            .players
-            .iter_mut()
-            .find(|player| player.identity_id == identity_id)
-        {
-            player.client_id = Some(client_id);
+        if let Some(record) = self.players.get(&identity_id).cloned() {
+            if let Some(player) = self
+                .world
+                .get_component_mut::<PlayerComponent>(record.entity_id)
+            {
+                player.online = true;
+            }
 
-            player.connection_state = PlayerConnectionState::Online;
+            if let Some(input) = self
+                .world
+                .get_component_mut::<PlayerInputComponent>(record.entity_id)
+            {
+                *input = PlayerInputComponent::new();
+            }
 
-            self.player_inputs
-                .insert(player.entity_net_id, PlayerInputState::new());
+            if let Some(player_record) = self.players.get_mut(&identity_id) {
+                player_record.client_id = Some(client_id);
+            }
 
-            return player.entity_net_id;
+            return record.entity_net_id;
         }
 
-        let entity_net_id = self.spawn_player_entity();
+        let entity_net_id = self.allocate_net_id();
+        let entity_id = self.world.spawn();
+        let display_name = guest_display_name(&identity_id);
 
-        self.players.push(PlayerRecord {
-            identity_id,
-            client_id: Some(client_id),
+        self.add_base_components(
+            entity_id,
             entity_net_id,
-            connection_state: PlayerConnectionState::Online,
-        });
+            PLAYER_PROTOTYPE,
+            Vec2 { x: 2.5, y: 2.5 },
+        );
+        self.world
+            .add_component(
+                entity_id,
+                PlayerComponent {
+                    identity_id: identity_id.clone(),
+                    display_name,
+                    online: true,
+                },
+            )
+            .expect("player entity must exist");
+        self.world
+            .add_component(entity_id, PlayerInputComponent::new())
+            .expect("player entity must exist");
+        self.world
+            .add_component(entity_id, ColliderComponent { radius: 0.32 })
+            .expect("player entity must exist");
+        self.world
+            .add_component(entity_id, InventoryComponent::default())
+            .expect("player entity must exist");
 
-        self.player_inputs
-            .insert(entity_net_id, PlayerInputState::new());
+        self.players.insert(
+            identity_id,
+            PlayerRecord {
+                client_id: Some(client_id),
+                entity_id,
+                entity_net_id,
+            },
+        );
 
         entity_net_id
     }
 
-    pub fn mark_player_disconnected(
-        &mut self,
-        identity_id: &PlayerIdentityId,
-    ) -> Option<EntityNetId> {
-        let player = self
-            .players
-            .iter_mut()
-            .find(|player| &player.identity_id == identity_id)?;
+    pub fn disconnect_player(&mut self, identity_id: &PlayerIdentityId) -> Option<EntityNetId> {
+        let record = self.players.get_mut(identity_id)?;
+        record.client_id = None;
 
-        player.client_id = None;
-
-        player.connection_state = PlayerConnectionState::Disconnected;
-
-        if let Some(input_state) = self.player_inputs.get_mut(&player.entity_net_id) {
-            input_state.movement = Vec2 { x: 0.0, y: 0.0 };
-
-            input_state.last_received_at = None;
+        if let Some(player) = self
+            .world
+            .get_component_mut::<PlayerComponent>(record.entity_id)
+        {
+            player.online = false;
+        }
+        if let Some(input) = self
+            .world
+            .get_component_mut::<PlayerInputComponent>(record.entity_id)
+        {
+            input.stop();
         }
 
-        Some(player.entity_net_id)
+        Some(record.entity_net_id)
     }
 
     pub fn set_movement_input(
@@ -152,102 +185,235 @@ impl ServerState {
         client_tick: u32,
         movement: Vec2,
     ) -> InputUpdateResult {
-        let entity_exists = self
-            .entities
-            .iter()
-            .any(|entity| entity.net_id == entity_net_id);
-
-        if !entity_exists {
+        let Some(entity_id) = self.network_entities.get(&entity_net_id).copied() else {
             return InputUpdateResult::EntityMissing;
-        }
+        };
+        let Some(input) = self
+            .world
+            .get_component_mut::<PlayerInputComponent>(entity_id)
+        else {
+            return InputUpdateResult::EntityMissing;
+        };
 
-        let input_state = self.player_inputs.entry(entity_net_id).or_default();
-
-        if let Some(last_sequence) = input_state.last_sequence {
+        if let Some(last_sequence) = input.last_sequence {
             if !is_sequence_newer(sequence, last_sequence) {
                 return InputUpdateResult::Stale;
             }
         }
 
-        input_state.last_sequence = Some(sequence);
-
-        input_state.last_client_tick = Some(client_tick);
-
-        input_state.movement = sanitize_movement(movement);
-
-        input_state.last_received_at = Some(Instant::now());
-
+        input.last_sequence = Some(sequence);
+        input.last_client_tick = Some(client_tick);
+        input.movement = sanitize_movement(movement);
+        input.last_received_at = Some(Instant::now());
         InputUpdateResult::Accepted
     }
 
-    pub fn snapshot_message_for(&self, entity_net_id: EntityNetId) -> ServerMessage {
-        let input_state = self.player_inputs.get(&entity_net_id);
+    pub fn interact(
+        &mut self,
+        actor_net_id: EntityNetId,
+        target_net_id: EntityNetId,
+    ) -> Option<String> {
+        if actor_net_id == target_net_id {
+            return None;
+        }
 
-        let last_processed_input_seq = input_state.and_then(|state| state.last_sequence);
+        let actor_id = self.network_entities.get(&actor_net_id).copied()?;
+        let target_id = self.network_entities.get(&target_net_id).copied()?;
 
-        let last_processed_client_tick = input_state.and_then(|state| state.last_client_tick);
+        let actor_position = self.world.get_component::<Transform>(actor_id)?.position;
+        let target_position = self.world.get_component::<Transform>(target_id)?.position;
+        let distance = ((actor_position.x - target_position.x).powi(2)
+            + (actor_position.y - target_position.y).powi(2))
+        .sqrt();
+
+        if distance > INTERACTION_RANGE {
+            return Some("Target is too far away.".to_string());
+        }
+
+        if let Some(door) = self.world.get_component_mut::<DoorComponent>(target_id) {
+            door.open = !door.open;
+            return Some(if door.open {
+                "Door opened.".to_string()
+            } else {
+                "Door closed.".to_string()
+            });
+        }
+
+        let item_name = self
+            .world
+            .get_component::<ItemComponent>(target_id)
+            .map(|item| item.name.clone());
+
+        if let Some(item_name) = item_name {
+            let inventory = self
+                .world
+                .get_component_mut::<InventoryComponent>(actor_id)?;
+            inventory.items.push(item_name.clone());
+            self.world.despawn(target_id);
+            self.network_entities.remove(&target_net_id);
+            return Some(format!("Picked up {item_name}."));
+        }
+
+        None
+    }
+
+    pub fn player_name(&self, entity_net_id: EntityNetId) -> Option<String> {
+        let entity_id = self.network_entities.get(&entity_net_id)?;
+        self.world
+            .get_component::<PlayerComponent>(*entity_id)
+            .map(|player| player.display_name.clone())
+    }
+
+    pub fn snapshot_for(&self, requester_net_id: EntityNetId) -> ServerMessage {
+        let requester_id = self.network_entities.get(&requester_net_id).copied();
+        let requester_position = requester_id
+            .and_then(|id| self.world.get_component::<Transform>(id))
+            .map(|transform| (transform.position, transform.z));
+
+        let input_state =
+            requester_id.and_then(|id| self.world.get_component::<PlayerInputComponent>(id));
+
+        let mut entities = self
+            .world
+            .iter()
+            .filter_map(|(_, entity)| {
+                let network = entity.get::<NetworkIdentity>()?;
+                let prototype = entity.get::<PrototypeRef>()?;
+                let transform = entity.get::<Transform>()?;
+
+                if let Some((requester_position, requester_z)) = requester_position {
+                    if requester_z != transform.z {
+                        return None;
+                    }
+
+                    let distance_squared = (requester_position.x - transform.position.x).powi(2)
+                        + (requester_position.y - transform.position.y).powi(2);
+                    if distance_squared > PVS_RADIUS * PVS_RADIUS {
+                        return None;
+                    }
+                }
+
+                let mut components = Vec::new();
+
+                if let Some(player) = entity.get::<PlayerComponent>() {
+                    components.push(ComponentSnapshot::Player {
+                        display_name: player.display_name.clone(),
+                        online: player.online,
+                    });
+                }
+                if let Some(door) = entity.get::<DoorComponent>() {
+                    components.push(ComponentSnapshot::Door { open: door.open });
+                }
+                if let Some(item) = entity.get::<ItemComponent>() {
+                    components.push(ComponentSnapshot::Item {
+                        name: item.name.clone(),
+                    });
+                }
+                if network.net_id == requester_net_id {
+                    if let Some(inventory) = entity.get::<InventoryComponent>() {
+                        components.push(ComponentSnapshot::Inventory {
+                            items: inventory.items.clone(),
+                        });
+                    }
+                }
+
+                Some(EntitySnapshot {
+                    net_id: network.net_id,
+                    prototype: prototype.id.clone(),
+                    position: NetPosition {
+                        x: transform.position.x,
+                        y: transform.position.y,
+                        z: transform.z,
+                    },
+                    components,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        entities.sort_by_key(|entity| entity.net_id);
 
         ServerMessage::Snapshot {
             tick: self.tick,
-            last_processed_input_seq,
-            last_processed_client_tick,
-            entities: self.entities.clone(),
+            last_processed_input_seq: input_state.and_then(|input| input.last_sequence),
+            last_processed_client_tick: input_state.and_then(|input| input.last_client_tick),
+            entities,
         }
     }
 
-    fn clear_stale_movement(&mut self) {
-        let now = Instant::now();
-
-        for input_state in self.player_inputs.values_mut() {
-            let Some(last_received_at) = input_state.last_received_at else {
-                continue;
-            };
-
-            if now.duration_since(last_received_at) < PLAYER_INPUT_TIMEOUT {
-                continue;
-            }
-
-            input_state.movement = Vec2 { x: 0.0, y: 0.0 };
-
-            input_state.last_received_at = None;
-        }
-    }
-
-    fn apply_movement(&mut self, delta_seconds: f32) {
-        for entity in &mut self.entities {
-            let Some(input_state) = self.player_inputs.get(&entity.net_id) else {
-                continue;
-            };
-
-            entity.position.x += input_state.movement.x * PLAYER_MOVE_SPEED * delta_seconds;
-
-            entity.position.y += input_state.movement.y * PLAYER_MOVE_SPEED * delta_seconds;
-        }
-    }
-
-    fn spawn_player_entity(&mut self) -> EntityNetId {
-        let entity_net_id = self.allocate_entity_net_id();
-
-        self.entities.push(EntitySnapshot {
-            net_id: entity_net_id,
-            prototype: "debug.player".to_string(),
-            position: NetPosition {
-                x: 0.0,
-                y: 0.0,
-                z: 0,
+    fn spawn_door(&mut self) {
+        let prototype = self.prototypes.require(DOOR_PROTOTYPE);
+        assert!(matches!(prototype.kind, PrototypeKind::Door));
+        let net_id = self.allocate_net_id();
+        let entity_id = self.world.spawn();
+        self.add_base_components(
+            entity_id,
+            net_id,
+            DOOR_PROTOTYPE,
+            Vec2 {
+                x: self.map.door_spawn.0,
+                y: self.map.door_spawn.1,
             },
-        });
-
-        entity_net_id
+        );
+        self.world
+            .add_component(entity_id, DoorComponent { open: false })
+            .expect("door entity must exist");
     }
 
-    fn allocate_entity_net_id(&mut self) -> EntityNetId {
-        let entity_net_id = self.next_entity_net_id;
-
-        self.next_entity_net_id = self.next_entity_net_id.saturating_add(1);
-
-        entity_net_id
+    fn spawn_item(&mut self, prototype_id: &str, position: Vec2) {
+        let prototype = self.prototypes.require(prototype_id).clone();
+        assert!(matches!(prototype.kind, PrototypeKind::Item));
+        let net_id = self.allocate_net_id();
+        let entity_id = self.world.spawn();
+        self.add_base_components(entity_id, net_id, prototype_id, position);
+        self.world
+            .add_component(
+                entity_id,
+                ItemComponent {
+                    name: prototype.display_name,
+                },
+            )
+            .expect("item entity must exist");
     }
+
+    fn add_base_components(
+        &mut self,
+        entity_id: EntityId,
+        net_id: EntityNetId,
+        prototype_id: &str,
+        position: Vec2,
+    ) {
+        self.world
+            .add_component(entity_id, NetworkIdentity { net_id })
+            .expect("entity must exist");
+        self.world
+            .add_component(entity_id, PrototypeRef::new(prototype_id))
+            .expect("entity must exist");
+        self.world
+            .add_component(entity_id, Transform::new(self.map.id.clone(), position, 0))
+            .expect("entity must exist");
+        self.network_entities.insert(net_id, entity_id);
+    }
+
+    fn allocate_net_id(&mut self) -> EntityNetId {
+        let net_id = self.next_entity_net_id;
+        self.next_entity_net_id = self
+            .next_entity_net_id
+            .checked_add(1)
+            .expect("network entity id space exhausted");
+        net_id
+    }
+}
+
+fn guest_display_name(identity_id: &str) -> String {
+    let suffix = identity_id
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    format!("Guest-{suffix}")
 }
 
 fn sanitize_movement(movement: Vec2) -> Vec2 {
@@ -256,13 +422,11 @@ fn sanitize_movement(movement: Vec2) -> Vec2 {
     }
 
     let length_squared = movement.x * movement.x + movement.y * movement.y;
-
     if length_squared <= 1.0 {
         return movement;
     }
 
     let length = length_squared.sqrt();
-
     Vec2 {
         x: movement.x / length,
         y: movement.y / length,
@@ -271,35 +435,34 @@ fn sanitize_movement(movement: Vec2) -> Vec2 {
 
 fn is_sequence_newer(candidate: u32, current: u32) -> bool {
     let difference = candidate.wrapping_sub(current);
-
     difference != 0 && difference < (1_u32 << 31)
-}
-
-pub fn new_shared_debug_state() -> SharedServerState {
-    Arc::new(RwLock::new(ServerState::new_debug()))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::is_sequence_newer;
+    use honknet_protocol::{ServerMessage, Vec2};
+    use uuid::Uuid;
+
+    use super::{InputUpdateResult, ServerState};
 
     #[test]
-    fn newer_sequence_is_accepted() {
-        assert!(is_sequence_newer(11, 10),);
-    }
+    fn player_moves_through_ecs_system() {
+        let mut state = ServerState::new_debug().unwrap();
+        let player = state.connect_player(Uuid::new_v4(), "guest-test".to_string());
+        assert_eq!(
+            state.set_movement_input(player, 1, 1, Vec2 { x: 1.0, y: 0.0 }),
+            InputUpdateResult::Accepted,
+        );
 
-    #[test]
-    fn duplicate_sequence_is_rejected() {
-        assert!(!is_sequence_newer(10, 10),);
-    }
+        state.advance_tick(0.5);
 
-    #[test]
-    fn older_sequence_is_rejected() {
-        assert!(!is_sequence_newer(9, 10),);
-    }
-
-    #[test]
-    fn wrapped_sequence_is_accepted() {
-        assert!(is_sequence_newer(0, u32::MAX,),);
+        let ServerMessage::Snapshot { entities, .. } = state.snapshot_for(player) else {
+            panic!("expected snapshot");
+        };
+        let snapshot = entities
+            .iter()
+            .find(|entity| entity.net_id == player)
+            .unwrap();
+        assert!(snapshot.position.x > 2.5);
     }
 }
