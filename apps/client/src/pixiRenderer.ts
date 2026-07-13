@@ -14,21 +14,17 @@ import type {
 
 const WORLD_SCALE = 64;
 const ENTITY_RADIUS = 18;
-const POSITION_INTERPOLATION_SPEED = 14;
+
 const CAMERA_INTERPOLATION_SPEED = 12;
+const MAX_RENDER_DELTA_SECONDS = 0.1;
 
 type RenderEntity = {
   container: Container;
   body: Graphics;
   label: Text;
 
-  currentX: number;
-  currentY: number;
-
-  targetX: number;
-  targetY: number;
-
-  z: number;
+  prototype: string;
+  isLocalPlayer: boolean;
 };
 
 export type PixiRendererState = {
@@ -67,17 +63,22 @@ export class PixiRenderer {
   private state:
     PixiRendererState = {
       serverTick: null,
+
       playerEntityNetId: null,
+
       movement: {
         x: 0,
         y: 0,
       },
+
       predictedPlayerPosition: null,
+
       entities: new Map(),
     };
 
   private cameraX = 0;
   private cameraY = 0;
+  private cameraZ = 0;
 
   private initialized = false;
 
@@ -87,7 +88,8 @@ export class PixiRenderer {
     this.host = host;
   }
 
-  public async initialize(): Promise<void> {
+  public async initialize():
+    Promise<void> {
     if (this.initialized) {
       return;
     }
@@ -118,7 +120,7 @@ export class PixiRenderer {
   ): void {
     this.state = state;
 
-    this.synchronizeEntities();
+    this.synchronizeEntityViews();
   }
 
   public destroy(): void {
@@ -129,6 +131,15 @@ export class PixiRenderer {
     this.application.ticker.remove(
       this.updateFrame,
     );
+
+    for (
+      const view
+      of this.entityViews.values()
+    ) {
+      view.container.destroy({
+        children: true,
+      });
+    }
 
     this.entityViews.clear();
 
@@ -142,7 +153,7 @@ export class PixiRenderer {
     this.initialized = false;
   }
 
-  private synchronizeEntities(): void {
+  private synchronizeEntityViews(): void {
     const activeEntityIds =
       new Set<EntityNetId>();
 
@@ -156,6 +167,10 @@ export class PixiRenderer {
         entityNetId,
       );
 
+      const isLocalPlayer =
+        entityNetId ===
+        this.state.playerEntityNetId;
+
       let view =
         this.entityViews.get(
           entityNetId,
@@ -166,6 +181,7 @@ export class PixiRenderer {
           this.createEntityView(
             entityNetId,
             entity.prototype,
+            isLocalPlayer,
           );
 
         this.entityViews.set(
@@ -176,37 +192,34 @@ export class PixiRenderer {
         this.worldContainer.addChild(
           view.container,
         );
-
-        view.currentX =
-          entity.position.x;
-
-        view.currentY =
-          entity.position.y;
       }
 
-      view.label.text =
-        `${entity.prototype}\n#${entityNetId}`;
+      if (
+        view.prototype !==
+        entity.prototype
+      ) {
+        view.prototype =
+          entity.prototype;
 
-      const targetPosition =
-        entityNetId ===
-          this.state.playerEntityNetId &&
-        this.state.predictedPlayerPosition
-          ? this.state
-              .predictedPlayerPosition
-          : entity.position;
+        this.updateEntityLabel(
+          view,
+          entityNetId,
+          entity.prototype,
+        );
+      }
 
-      view.targetX =
-        targetPosition.x;
+      if (
+        view.isLocalPlayer !==
+        isLocalPlayer
+      ) {
+        view.isLocalPlayer =
+          isLocalPlayer;
 
-      view.targetY =
-        targetPosition.y;
-
-      view.z =
-        targetPosition.z;
-
-      view.container.visible =
-        targetPosition.z ===
-        this.getCameraZ();
+        this.redrawEntityBody(
+          view.body,
+          isLocalPlayer,
+        );
+      }
     }
 
     for (
@@ -244,11 +257,14 @@ export class PixiRenderer {
   ): void => {
     const deltaSeconds =
       Math.min(
-        ticker.deltaMS / 1000,
-        0.1,
+        Math.max(
+          ticker.deltaMS / 1000,
+          0,
+        ),
+        MAX_RENDER_DELTA_SECONDS,
       );
 
-    this.updateEntities(
+    this.updateEntityPresentation(
       deltaSeconds,
     );
 
@@ -257,55 +273,55 @@ export class PixiRenderer {
     );
   };
 
-  private updateEntities(
+  private updateEntityPresentation(
     deltaSeconds: number,
   ): void {
+    const cameraZ =
+      this.getCameraZ();
+
     for (
       const [
         entityNetId,
-        view,
-      ] of this.entityViews
+        entity,
+      ] of this.state.entities
     ) {
+      const view =
+        this.entityViews.get(
+          entityNetId,
+        );
+
+      if (!view) {
+        continue;
+      }
+
       const isLocalPlayer =
         entityNetId ===
         this.state.playerEntityNetId;
 
       if (
         isLocalPlayer &&
-        this.state.predictedPlayerPosition
+        this.state
+          .predictedPlayerPosition
       ) {
-        view.currentX =
-          view.targetX;
-
-        view.currentY =
-          view.targetY;
+        entity.setRenderPosition(
+          this.state
+            .predictedPlayerPosition,
+        );
       } else {
-        const factor =
-          1 -
-          Math.exp(
-            -POSITION_INTERPOLATION_SPEED *
-              deltaSeconds,
-          );
-
-        view.currentX +=
-          (
-            view.targetX -
-            view.currentX
-          ) *
-          factor;
-
-        view.currentY +=
-          (
-            view.targetY -
-            view.currentY
-          ) *
-          factor;
+        entity.updateRenderPosition(
+          deltaSeconds,
+        );
       }
 
+      view.container.visible =
+        entity.renderPosition.z ===
+        cameraZ;
+
       view.container.position.set(
-        view.currentX *
+        entity.renderPosition.x *
           WORLD_SCALE,
-        view.currentY *
+
+        entity.renderPosition.y *
           WORLD_SCALE,
       );
     }
@@ -318,17 +334,22 @@ export class PixiRenderer {
       this.getCameraTarget();
 
     if (cameraTarget) {
-      if (
+      this.cameraZ =
+        cameraTarget.z;
+
+      const usingPrediction =
         this.state
-          .predictedPlayerPosition
-      ) {
+          .predictedPlayerPosition !==
+        null;
+
+      if (usingPrediction) {
         this.cameraX =
           cameraTarget.x;
 
         this.cameraY =
           cameraTarget.y;
       } else {
-        const factor =
+        const interpolationFactor =
           1 -
           Math.exp(
             -CAMERA_INTERPOLATION_SPEED *
@@ -340,14 +361,14 @@ export class PixiRenderer {
             cameraTarget.x -
             this.cameraX
           ) *
-          factor;
+          interpolationFactor;
 
         this.cameraY +=
           (
             cameraTarget.y -
             this.cameraY
           ) *
-          factor;
+          interpolationFactor;
       }
     }
 
@@ -384,7 +405,7 @@ export class PixiRenderer {
 
     return this.state.entities.get(
       this.state.playerEntityNetId,
-    )?.position;
+    )?.renderPosition;
   }
 
   private getCameraZ(): number {
@@ -400,19 +421,21 @@ export class PixiRenderer {
       this.state.playerEntityNetId ===
       null
     ) {
-      return 0;
+      return this.cameraZ;
     }
 
     return (
       this.state.entities.get(
         this.state.playerEntityNetId,
-      )?.position.z ?? 0
+      )?.renderPosition.z ??
+      this.cameraZ
     );
   }
 
   private createEntityView(
     entityNetId: EntityNetId,
     prototype: string,
+    isLocalPlayer: boolean,
   ): RenderEntity {
     const container =
       new Container();
@@ -420,29 +443,14 @@ export class PixiRenderer {
     const body =
       new Graphics();
 
-    body.circle(
-      0,
-      0,
-      ENTITY_RADIUS,
+    this.redrawEntityBody(
+      body,
+      isLocalPlayer,
     );
-
-    body.fill(
-      entityNetId ===
-        this.state.playerEntityNetId
-        ? 0x6ee7ff
-        : 0xffc857,
-    );
-
-    body.stroke({
-      width: 3,
-      color: 0xffffff,
-      alpha: 0.8,
-    });
 
     const label =
       new Text({
-        text:
-          `${prototype}\n#${entityNetId}`,
+        text: '',
 
         style: {
           fill: 0xffffff,
@@ -469,19 +477,55 @@ export class PixiRenderer {
       label,
     );
 
-    return {
+    const view: RenderEntity = {
       container,
       body,
       label,
-
-      currentX: 0,
-      currentY: 0,
-
-      targetX: 0,
-      targetY: 0,
-
-      z: 0,
+      prototype,
+      isLocalPlayer,
     };
+
+    this.updateEntityLabel(
+      view,
+      entityNetId,
+      prototype,
+    );
+
+    return view;
+  }
+
+  private redrawEntityBody(
+    body: Graphics,
+    isLocalPlayer: boolean,
+  ): void {
+    body.clear();
+
+    body.circle(
+      0,
+      0,
+      ENTITY_RADIUS,
+    );
+
+    body.fill(
+      isLocalPlayer
+        ? 0x6ee7ff
+        : 0xffc857,
+    );
+
+    body.stroke({
+      width: 3,
+      color: 0xffffff,
+      alpha: 0.8,
+    });
+  }
+
+  private updateEntityLabel(
+    view: RenderEntity,
+    entityNetId: EntityNetId,
+    prototype: string,
+  ): void {
+    view.label.text =
+      `${prototype}\n#${entityNetId}`;
   }
 
   private getViewportSize(): {
