@@ -1,7 +1,7 @@
+import type { ClientEntity } from './clientEntity';
 import type {
   ClientMessage,
   EntityNetId,
-  EntitySnapshot,
   NetPosition,
   Vec2,
 } from './protocol';
@@ -188,7 +188,7 @@ export class LocalPlayerController {
 
   public handleSnapshot(
     playerEntity:
-      EntitySnapshot | undefined,
+      ClientEntity | undefined,
     lastProcessedInputSeq:
       number | null,
     lastProcessedClientTick:
@@ -423,7 +423,7 @@ export class LocalPlayerController {
   }
 
   private reconcilePlayerPosition(
-    playerEntity: EntitySnapshot,
+    playerEntity: ClientEntity,
   ): void {
     const serverPosition =
       playerEntity.position;

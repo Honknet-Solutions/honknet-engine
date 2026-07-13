@@ -2,90 +2,90 @@ import {
   Application,
   Container,
   Graphics,
-  Ticker,
+  Text,
 } from 'pixi.js';
 
+import type { ClientEntity } from './clientEntity';
 import type {
   EntityNetId,
-  EntitySnapshot,
   NetPosition,
   Vec2,
 } from './protocol';
 
-const WORLD_SCALE = 32;
-const INTERPOLATION_SPEED = 14;
+const WORLD_SCALE = 64;
+const ENTITY_RADIUS = 18;
+const POSITION_INTERPOLATION_SPEED = 14;
+const CAMERA_INTERPOLATION_SPEED = 12;
+
+type RenderEntity = {
+  container: Container;
+  body: Graphics;
+  label: Text;
+
+  currentX: number;
+  currentY: number;
+
+  targetX: number;
+  targetY: number;
+
+  z: number;
+};
 
 export type PixiRendererState = {
   serverTick: number | null;
-  playerEntityNetId: EntityNetId | null;
+
+  playerEntityNetId:
+    EntityNetId | null;
+
   movement: Vec2;
+
   predictedPlayerPosition:
     NetPosition | null;
+
   entities: ReadonlyMap<
     EntityNetId,
-    EntitySnapshot
+    ClientEntity
   >;
 };
 
-type EntityView = {
-  container: Container;
-  body: Graphics;
-  isPlayer: boolean;
-  renderedPosition: NetPosition;
-  targetPosition: NetPosition;
-};
-
 export class PixiRenderer {
+  private readonly host:
+    HTMLElement;
+
   private readonly application =
     new Application();
 
-  private readonly gridContainer =
+  private readonly worldContainer =
     new Container();
-
-  private readonly entityContainer =
-    new Container();
-
-  private readonly gridGraphics =
-    new Graphics();
 
   private readonly entityViews =
-    new Map<EntityNetId, EntityView>();
+    new Map<
+      EntityNetId,
+      RenderEntity
+    >();
 
-  private state: PixiRendererState = {
-    serverTick: null,
-    playerEntityNetId: null,
-    movement: {
-      x: 0,
-      y: 0,
-    },
-    predictedPlayerPosition: null,
-    entities: new Map(),
-  };
-
-  private cameraRenderedPosition:
-    NetPosition = {
-      x: 0,
-      y: 0,
-      z: 0,
+  private state:
+    PixiRendererState = {
+      serverTick: null,
+      playerEntityNetId: null,
+      movement: {
+        x: 0,
+        y: 0,
+      },
+      predictedPlayerPosition: null,
+      entities: new Map(),
     };
 
-  private cameraTargetPosition:
-    NetPosition = {
-      x: 0,
-      y: 0,
-      z: 0,
-    };
+  private cameraX = 0;
+  private cameraY = 0;
 
-  private cameraInitialized = false;
   private initialized = false;
 
-  private resizeObserver:
-    ResizeObserver | null = null;
-
   public constructor(
-    private readonly hostElement:
-      HTMLElement,
-  ) {}
+    host: HTMLElement,
+  ) {
+    this.host = host;
+  }
 
   public async initialize(): Promise<void> {
     if (this.initialized) {
@@ -93,54 +93,24 @@ export class PixiRenderer {
     }
 
     await this.application.init({
-      width: 800,
-      height: 480,
-      backgroundColor: 0x071019,
+      resizeTo: this.host,
       antialias: true,
-      autoDensity: true,
-      resolution:
-        window.devicePixelRatio || 1,
-      powerPreference:
-        'high-performance',
+      background: '#10131a',
     });
 
-    const canvas =
-      this.application.canvas as HTMLCanvasElement;
-
-    canvas.classList.add(
-      'pixi-canvas',
-    );
-
-    this.hostElement.replaceChildren(
-      canvas,
-    );
-
-    this.gridContainer.addChild(
-      this.gridGraphics,
-    );
-
     this.application.stage.addChild(
-      this.gridContainer,
-      this.entityContainer,
+      this.worldContainer,
+    );
+
+    this.host.appendChild(
+      this.application.canvas,
     );
 
     this.application.ticker.add(
       this.updateFrame,
     );
 
-    this.resizeObserver =
-      new ResizeObserver(() => {
-        this.resizeToHost();
-      });
-
-    this.resizeObserver.observe(
-      this.hostElement,
-    );
-
     this.initialized = true;
-
-    this.resizeToHost();
-    this.synchronizeScene();
   }
 
   public update(
@@ -148,177 +118,116 @@ export class PixiRenderer {
   ): void {
     this.state = state;
 
-    if (!this.initialized) {
-      return;
-    }
-
-    this.updateCameraTarget();
-    this.synchronizeScene();
+    this.synchronizeEntities();
   }
 
   public destroy(): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
+    if (!this.initialized) {
+      return;
+    }
 
     this.application.ticker.remove(
       this.updateFrame,
     );
 
-    for (
-      const entityView
-      of this.entityViews.values()
-    ) {
-      entityView.container.destroy({
-        children: true,
-      });
-    }
-
     this.entityViews.clear();
 
-    this.application.destroy({
-      removeView: true,
-    });
+    this.application.destroy(
+      true,
+      {
+        children: true,
+      },
+    );
 
     this.initialized = false;
   }
 
-  private readonly updateFrame = (
-    ticker: Ticker,
-  ): void => {
-    if (!this.initialized) {
-      return;
-    }
+  private synchronizeEntities(): void {
+    const activeEntityIds =
+      new Set<EntityNetId>();
 
-    const deltaSeconds = Math.min(
-      ticker.deltaMS / 1000,
-      0.1,
-    );
-
-    const interpolationFactor =
-      1 -
-      Math.exp(
-        -INTERPOLATION_SPEED *
-          deltaSeconds,
-      );
-
-    this.interpolateCamera(
-      interpolationFactor,
-    );
-
-    this.interpolateEntities(
-      interpolationFactor,
-    );
-
-    this.updateEntityTransforms();
-    this.redrawGrid();
-  };
-
-  private resizeToHost(): void {
-    if (!this.initialized) {
-      return;
-    }
-
-    const width = Math.max(
-      1,
-      Math.floor(
-        this.hostElement.clientWidth,
-      ),
-    );
-
-    const height = Math.max(
-      1,
-      Math.floor(
-        this.hostElement.clientHeight,
-      ),
-    );
-
-    this.application.renderer.resize(
-      width,
-      height,
-    );
-
-    this.updateEntityTransforms();
-    this.redrawGrid();
-  }
-
-  private synchronizeScene(): void {
-    this.removeMissingEntityViews();
-    this.createMissingEntityViews();
-    this.updateEntityTargets();
-    this.updateCameraTarget();
-  }
-
-  private updateCameraTarget(): void {
-    const predictedPosition =
-      this.state.predictedPlayerPosition;
-
-    if (predictedPosition !== null) {
-      this.cameraTargetPosition = {
-        ...predictedPosition,
-      };
-
-      if (!this.cameraInitialized) {
-        this.cameraRenderedPosition = {
-          ...predictedPosition,
-        };
-
-        this.cameraInitialized = true;
-      }
-
-      return;
-    }
-
-    const playerEntityNetId =
-      this.state.playerEntityNetId;
-
-    if (playerEntityNetId === null) {
-      return;
-    }
-
-    const playerEntity =
-      this.state.entities.get(
-        playerEntityNetId,
-      );
-
-    if (!playerEntity) {
-      return;
-    }
-
-    this.cameraTargetPosition = {
-      x: playerEntity.position.x,
-      y: playerEntity.position.y,
-      z: playerEntity.position.z,
-    };
-
-    if (!this.cameraInitialized) {
-      this.cameraRenderedPosition = {
-        ...this.cameraTargetPosition,
-      };
-
-      this.cameraInitialized = true;
-    }
-  }
-
-  private removeMissingEntityViews(): void {
     for (
       const [
         entityNetId,
-        entityView,
+        entity,
+      ] of this.state.entities
+    ) {
+      activeEntityIds.add(
+        entityNetId,
+      );
+
+      let view =
+        this.entityViews.get(
+          entityNetId,
+        );
+
+      if (!view) {
+        view =
+          this.createEntityView(
+            entityNetId,
+            entity.prototype,
+          );
+
+        this.entityViews.set(
+          entityNetId,
+          view,
+        );
+
+        this.worldContainer.addChild(
+          view.container,
+        );
+
+        view.currentX =
+          entity.position.x;
+
+        view.currentY =
+          entity.position.y;
+      }
+
+      view.label.text =
+        `${entity.prototype}\n#${entityNetId}`;
+
+      const targetPosition =
+        entityNetId ===
+          this.state.playerEntityNetId &&
+        this.state.predictedPlayerPosition
+          ? this.state
+              .predictedPlayerPosition
+          : entity.position;
+
+      view.targetX =
+        targetPosition.x;
+
+      view.targetY =
+        targetPosition.y;
+
+      view.z =
+        targetPosition.z;
+
+      view.container.visible =
+        targetPosition.z ===
+        this.getCameraZ();
+    }
+
+    for (
+      const [
+        entityNetId,
+        view,
       ] of this.entityViews
     ) {
       if (
-        this.state.entities.has(
+        activeEntityIds.has(
           entityNetId,
         )
       ) {
         continue;
       }
 
-      this.entityContainer.removeChild(
-        entityView.container,
+      this.worldContainer.removeChild(
+        view.container,
       );
 
-      entityView.container.destroy({
+      view.container.destroy({
         children: true,
       });
 
@@ -328,436 +237,265 @@ export class PixiRenderer {
     }
   }
 
-  private createMissingEntityViews(): void {
-    for (
-      const entity
-      of this.state.entities.values()
-    ) {
-      if (
-        this.entityViews.has(
-          entity.net_id,
-        )
-      ) {
-        continue;
-      }
-
-      const isPlayer =
-        entity.net_id ===
-        this.state.playerEntityNetId;
-
-      const entityView =
-        this.createEntityView(
-          entity,
-          isPlayer,
-        );
-
-      this.entityViews.set(
-        entity.net_id,
-        entityView,
+  private readonly updateFrame = (
+    ticker: {
+      deltaMS: number;
+    },
+  ): void => {
+    const deltaSeconds =
+      Math.min(
+        ticker.deltaMS / 1000,
+        0.1,
       );
 
-      this.entityContainer.addChild(
-        entityView.container,
-      );
-    }
-  }
+    this.updateEntities(
+      deltaSeconds,
+    );
 
-  private updateEntityTargets(): void {
+    this.updateCamera(
+      deltaSeconds,
+    );
+  };
+
+  private updateEntities(
+    deltaSeconds: number,
+  ): void {
     for (
-      const entity
-      of this.state.entities.values()
+      const [
+        entityNetId,
+        view,
+      ] of this.entityViews
     ) {
-      const entityView =
-        this.entityViews.get(
-          entity.net_id,
-        );
-
-      if (!entityView) {
-        continue;
-      }
-
-      const isPlayer =
-        entity.net_id ===
+      const isLocalPlayer =
+        entityNetId ===
         this.state.playerEntityNetId;
 
       if (
-        entityView.isPlayer !== isPlayer
+        isLocalPlayer &&
+        this.state.predictedPlayerPosition
       ) {
-        this.redrawEntityBody(
-          entityView.body,
-          isPlayer,
-        );
+        view.currentX =
+          view.targetX;
 
-        entityView.isPlayer =
-          isPlayer;
+        view.currentY =
+          view.targetY;
+      } else {
+        const factor =
+          1 -
+          Math.exp(
+            -POSITION_INTERPOLATION_SPEED *
+              deltaSeconds,
+          );
+
+        view.currentX +=
+          (
+            view.targetX -
+            view.currentX
+          ) *
+          factor;
+
+        view.currentY +=
+          (
+            view.targetY -
+            view.currentY
+          ) *
+          factor;
       }
 
-      if (
-        isPlayer &&
-        this.state
-          .predictedPlayerPosition !== null
-      ) {
-        entityView.targetPosition = {
-          ...this.state
-            .predictedPlayerPosition,
-        };
-
-        continue;
-      }
-
-      entityView.targetPosition = {
-        x: entity.position.x,
-        y: entity.position.y,
-        z: entity.position.z,
-      };
-    }
-  }
-
-  private interpolateCamera(
-    interpolationFactor: number,
-  ): void {
-    if (!this.cameraInitialized) {
-      return;
-    }
-
-    if (
-      this.state
-        .predictedPlayerPosition !== null
-    ) {
-      this.cameraRenderedPosition = {
-        ...this.cameraTargetPosition,
-      };
-
-      return;
-    }
-
-    this.cameraRenderedPosition.x =
-      lerp(
-        this.cameraRenderedPosition.x,
-        this.cameraTargetPosition.x,
-        interpolationFactor,
+      view.container.position.set(
+        view.currentX *
+          WORLD_SCALE,
+        view.currentY *
+          WORLD_SCALE,
       );
-
-    this.cameraRenderedPosition.y =
-      lerp(
-        this.cameraRenderedPosition.y,
-        this.cameraTargetPosition.y,
-        interpolationFactor,
-      );
-
-    this.cameraRenderedPosition.z =
-      this.cameraTargetPosition.z;
-  }
-
-  private interpolateEntities(
-    interpolationFactor: number,
-  ): void {
-    for (
-      const entityView
-      of this.entityViews.values()
-    ) {
-      if (
-        entityView.isPlayer &&
-        this.state
-          .predictedPlayerPosition !== null
-      ) {
-        entityView.renderedPosition = {
-          ...entityView.targetPosition,
-        };
-
-        continue;
-      }
-
-      entityView.renderedPosition.x =
-        lerp(
-          entityView.renderedPosition.x,
-          entityView.targetPosition.x,
-          interpolationFactor,
-        );
-
-      entityView.renderedPosition.y =
-        lerp(
-          entityView.renderedPosition.y,
-          entityView.targetPosition.y,
-          interpolationFactor,
-        );
-
-      entityView.renderedPosition.z =
-        entityView.targetPosition.z;
     }
   }
 
-  private updateEntityTransforms(): void {
+  private updateCamera(
+    deltaSeconds: number,
+  ): void {
+    const cameraTarget =
+      this.getCameraTarget();
+
+    if (cameraTarget) {
+      if (
+        this.state
+          .predictedPlayerPosition
+      ) {
+        this.cameraX =
+          cameraTarget.x;
+
+        this.cameraY =
+          cameraTarget.y;
+      } else {
+        const factor =
+          1 -
+          Math.exp(
+            -CAMERA_INTERPOLATION_SPEED *
+              deltaSeconds,
+          );
+
+        this.cameraX +=
+          (
+            cameraTarget.x -
+            this.cameraX
+          ) *
+          factor;
+
+        this.cameraY +=
+          (
+            cameraTarget.y -
+            this.cameraY
+          ) *
+          factor;
+      }
+    }
+
     const viewportSize =
       this.getViewportSize();
 
-    for (
-      const entityView
-      of this.entityViews.values()
+    this.worldContainer.position.set(
+      viewportSize.width / 2 -
+        this.cameraX *
+          WORLD_SCALE,
+
+      viewportSize.height / 2 -
+        this.cameraY *
+          WORLD_SCALE,
+    );
+  }
+
+  private getCameraTarget():
+    NetPosition | undefined {
+    if (
+      this.state
+        .predictedPlayerPosition
     ) {
-      const screenPosition =
-        this.worldToScreen(
-          entityView.renderedPosition,
-          viewportSize,
-        );
-
-      entityView.container.position.set(
-        screenPosition.x,
-        screenPosition.y,
-      );
-
-      entityView.container.visible =
-        entityView.renderedPosition.z ===
-        this.cameraRenderedPosition.z;
+      return this.state
+        .predictedPlayerPosition;
     }
+
+    if (
+      this.state.playerEntityNetId ===
+      null
+    ) {
+      return undefined;
+    }
+
+    return this.state.entities.get(
+      this.state.playerEntityNetId,
+    )?.position;
+  }
+
+  private getCameraZ(): number {
+    if (
+      this.state
+        .predictedPlayerPosition
+    ) {
+      return this.state
+        .predictedPlayerPosition.z;
+    }
+
+    if (
+      this.state.playerEntityNetId ===
+      null
+    ) {
+      return 0;
+    }
+
+    return (
+      this.state.entities.get(
+        this.state.playerEntityNetId,
+      )?.position.z ?? 0
+    );
   }
 
   private createEntityView(
-    entity: EntitySnapshot,
-    isPlayer: boolean,
-  ): EntityView {
+    entityNetId: EntityNetId,
+    prototype: string,
+  ): RenderEntity {
     const container =
       new Container();
 
     const body =
       new Graphics();
 
-    this.redrawEntityBody(
-      body,
-      isPlayer,
+    body.circle(
+      0,
+      0,
+      ENTITY_RADIUS,
     );
 
-    container.addChild(body);
+    body.fill(
+      entityNetId ===
+        this.state.playerEntityNetId
+        ? 0x6ee7ff
+        : 0xffc857,
+    );
 
-    const initialPosition:
-      NetPosition = {
-        x: entity.position.x,
-        y: entity.position.y,
-        z: entity.position.z,
-      };
+    body.stroke({
+      width: 3,
+      color: 0xffffff,
+      alpha: 0.8,
+    });
+
+    const label =
+      new Text({
+        text:
+          `${prototype}\n#${entityNetId}`,
+
+        style: {
+          fill: 0xffffff,
+          fontSize: 12,
+          align: 'center',
+        },
+      });
+
+    label.anchor.set(
+      0.5,
+      0,
+    );
+
+    label.position.set(
+      0,
+      ENTITY_RADIUS + 8,
+    );
+
+    container.addChild(
+      body,
+    );
+
+    container.addChild(
+      label,
+    );
 
     return {
       container,
       body,
-      isPlayer,
-      renderedPosition: {
-        ...initialPosition,
-      },
-      targetPosition: {
-        ...initialPosition,
-      },
+      label,
+
+      currentX: 0,
+      currentY: 0,
+
+      targetX: 0,
+      targetY: 0,
+
+      z: 0,
     };
   }
 
-  private redrawEntityBody(
-    body: Graphics,
-    isPlayer: boolean,
-  ): void {
-    body.clear();
-
-    const radius =
-      isPlayer ? 12 : 10;
-
-    const fillColor =
-      isPlayer
-        ? 0x7cffc4
-        : 0xffcc66;
-
-    const strokeColor =
-      isPlayer
-        ? 0xeafff6
-        : 0xfff0c2;
-
-    body
-      .circle(0, 0, radius)
-      .fill(fillColor)
-      .stroke({
-        color: strokeColor,
-        width: 2,
-      });
-
-    if (isPlayer) {
-      body
-        .circle(
-          0,
-          0,
-          radius + 5,
-        )
-        .stroke({
-          color: 0x7cffc4,
-          width: 1,
-          alpha: 0.45,
-        });
-    }
-  }
-
-  private redrawGrid(): void {
-    const viewportSize =
-      this.getViewportSize();
-
-    const cameraPixelX =
-      this.cameraRenderedPosition.x *
-      WORLD_SCALE;
-
-    const cameraPixelY =
-      this.cameraRenderedPosition.y *
-      WORLD_SCALE;
-
-    const centerX =
-      viewportSize.x / 2;
-
-    const centerY =
-      viewportSize.y / 2;
-
-    const horizontalOffset =
-      positiveModulo(
-        centerX - cameraPixelX,
-        WORLD_SCALE,
-      );
-
-    const verticalOffset =
-      positiveModulo(
-        centerY - cameraPixelY,
-        WORLD_SCALE,
-      );
-
-    this.gridGraphics.clear();
-
-    for (
-      let x = horizontalOffset;
-      x <= viewportSize.x;
-      x += WORLD_SCALE
-    ) {
-      this.gridGraphics.moveTo(x, 0);
-
-      this.gridGraphics.lineTo(
-        x,
-        viewportSize.y,
-      );
-    }
-
-    for (
-      let y = verticalOffset;
-      y <= viewportSize.y;
-      y += WORLD_SCALE
-    ) {
-      this.gridGraphics.moveTo(0, y);
-
-      this.gridGraphics.lineTo(
-        viewportSize.x,
-        y,
-      );
-    }
-
-    this.gridGraphics.stroke({
-      color: 0xffffff,
-      width: 1,
-      alpha: 0.08,
-    });
-
-    const worldOriginScreen =
-      this.worldToScreen(
-        {
-          x: 0,
-          y: 0,
-          z:
-            this.cameraRenderedPosition.z,
-        },
-        viewportSize,
-      );
-
-    if (
-      worldOriginScreen.x >= 0 &&
-      worldOriginScreen.x <=
-        viewportSize.x
-    ) {
-      this.gridGraphics.moveTo(
-        worldOriginScreen.x,
-        0,
-      );
-
-      this.gridGraphics.lineTo(
-        worldOriginScreen.x,
-        viewportSize.y,
-      );
-    }
-
-    if (
-      worldOriginScreen.y >= 0 &&
-      worldOriginScreen.y <=
-        viewportSize.y
-    ) {
-      this.gridGraphics.moveTo(
-        0,
-        worldOriginScreen.y,
-      );
-
-      this.gridGraphics.lineTo(
-        viewportSize.x,
-        worldOriginScreen.y,
-      );
-    }
-
-    this.gridGraphics.stroke({
-      color: 0xffffff,
-      width: 1,
-      alpha: 0.3,
-    });
-  }
-
-  private worldToScreen(
-    position: NetPosition,
-    viewportSize: Vec2,
-  ): Vec2 {
+  private getViewportSize(): {
+    width: number;
+    height: number;
+  } {
     return {
-      x:
-        viewportSize.x / 2 +
-        (
-          position.x -
-          this.cameraRenderedPosition.x
-        ) *
-          WORLD_SCALE,
-
-      y:
-        viewportSize.y / 2 +
-        (
-          position.y -
-          this.cameraRenderedPosition.y
-        ) *
-          WORLD_SCALE,
-    };
-  }
-
-  private getViewportSize(): Vec2 {
-    return {
-      x:
+      width:
         this.application.renderer
           .screen.width,
 
-      y:
+      height:
         this.application.renderer
           .screen.height,
     };
   }
-}
-
-function lerp(
-  current: number,
-  target: number,
-  factor: number,
-): number {
-  return (
-    current +
-    (target - current) * factor
-  );
-}
-
-function positiveModulo(
-  value: number,
-  divisor: number,
-): number {
-  return (
-    (value % divisor + divisor) %
-    divisor
-  );
 }

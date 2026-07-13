@@ -1,3 +1,4 @@
+import { ClientEntity } from './clientEntity';
 import type {
   EntityNetId,
   EntitySnapshot,
@@ -8,7 +9,7 @@ export type ClientWorldState = {
 
   entities: ReadonlyMap<
     EntityNetId,
-    EntitySnapshot
+    ClientEntity
   >;
 };
 
@@ -29,7 +30,7 @@ export class ClientWorld {
   private readonly entities =
     new Map<
       EntityNetId,
-      EntitySnapshot
+      ClientEntity
     >();
 
   public applySnapshot(
@@ -45,11 +46,11 @@ export class ClientWorld {
     const removedEntityIds:
       EntityNetId[] = [];
 
-    const snapshotEntityIds =
+    const receivedEntityIds =
       new Set<EntityNetId>();
 
     for (const snapshot of snapshots) {
-      snapshotEntityIds.add(
+      receivedEntityIds.add(
         snapshot.net_id,
       );
 
@@ -59,28 +60,33 @@ export class ClientWorld {
         );
 
       if (!existingEntity) {
-        this.entities.set(
-          snapshot.net_id,
-          cloneEntitySnapshot(
+        const entity =
+          new ClientEntity(
             snapshot,
-          ),
+            serverTick,
+          );
+
+        this.entities.set(
+          entity.netId,
+          entity,
         );
 
         createdEntityIds.push(
-          snapshot.net_id,
+          entity.netId,
         );
 
         continue;
       }
 
-      if (
-        updateEntitySnapshot(
-          existingEntity,
+      const changed =
+        existingEntity.applySnapshot(
           snapshot,
-        )
-      ) {
+          serverTick,
+        );
+
+      if (changed) {
         updatedEntityIds.push(
-          snapshot.net_id,
+          existingEntity.netId,
         );
       }
     }
@@ -90,7 +96,7 @@ export class ClientWorld {
       of this.entities.keys()
     ) {
       if (
-        snapshotEntityIds.has(
+        receivedEntityIds.has(
           entityNetId,
         )
       ) {
@@ -123,6 +129,7 @@ export class ClientWorld {
     ];
 
     this.serverTick = null;
+
     this.entities.clear();
 
     return removedEntityIds;
@@ -135,7 +142,7 @@ export class ClientWorld {
 
   public getEntity(
     entityNetId: EntityNetId,
-  ): EntitySnapshot | undefined {
+  ): ClientEntity | undefined {
     return this.entities.get(
       entityNetId,
     );
@@ -155,81 +162,18 @@ export class ClientWorld {
 
   public getEntities(): ReadonlyMap<
     EntityNetId,
-    EntitySnapshot
+    ClientEntity
   > {
     return this.entities;
   }
 
   public getState(): ClientWorldState {
     return {
-      serverTick: this.serverTick,
-      entities: this.entities,
+      serverTick:
+        this.serverTick,
+
+      entities:
+        this.entities,
     };
   }
-}
-
-function cloneEntitySnapshot(
-  snapshot: EntitySnapshot,
-): EntitySnapshot {
-  return {
-    net_id: snapshot.net_id,
-
-    prototype:
-      snapshot.prototype,
-
-    position: {
-      x: snapshot.position.x,
-      y: snapshot.position.y,
-      z: snapshot.position.z,
-    },
-  };
-}
-
-function updateEntitySnapshot(
-  target: EntitySnapshot,
-  source: EntitySnapshot,
-): boolean {
-  let changed = false;
-
-  if (
-    target.prototype !==
-    source.prototype
-  ) {
-    target.prototype =
-      source.prototype;
-
-    changed = true;
-  }
-
-  if (
-    target.position.x !==
-    source.position.x
-  ) {
-    target.position.x =
-      source.position.x;
-
-    changed = true;
-  }
-
-  if (
-    target.position.y !==
-    source.position.y
-  ) {
-    target.position.y =
-      source.position.y;
-
-    changed = true;
-  }
-
-  if (
-    target.position.z !==
-    source.position.z
-  ) {
-    target.position.z =
-      source.position.z;
-
-    changed = true;
-  }
-
-  return changed;
 }
