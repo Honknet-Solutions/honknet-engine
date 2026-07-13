@@ -378,10 +378,11 @@ function handleSnapshot(
     { type: 'Snapshot' }
   >,
 ): void {
-  clientWorld.applySnapshot(
-    message.data.tick,
-    message.data.entities,
-  );
+  const snapshotResult =
+    clientWorld.applySnapshot(
+      message.data.tick,
+      message.data.entities,
+    );
 
   const serverTick =
     clientWorld.getServerTick();
@@ -413,7 +414,7 @@ function handleSnapshot(
     localPlayerController.getState();
 
   writeLog(
-    `Snapshot serverTick=${serverTick ?? 'none'}, clientTick=${currentLocalState.clientSimulationTick}, ackSeq=${currentLocalState.lastProcessedInputSeq ?? 'none'}, ackClientTick=${currentLocalState.lastProcessedClientTick ?? 'none'}, pending=${currentLocalState.pendingInputCount}, entities=${clientWorld.getEntityCount()}`,
+    `Snapshot serverTick=${serverTick ?? 'none'}, clientTick=${currentLocalState.clientSimulationTick}, ackSeq=${currentLocalState.lastProcessedInputSeq ?? 'none'}, ackClientTick=${currentLocalState.lastProcessedClientTick ?? 'none'}, pending=${currentLocalState.pendingInputCount}, entities=${clientWorld.getEntityCount()}, created=${snapshotResult.createdEntityIds.length}, updated=${snapshotResult.updatedEntityIds.length}, removed=${snapshotResult.removedEntityIds.length}`,
   );
 
   updateRendererState();
@@ -482,6 +483,7 @@ connectButton?.addEventListener(
   'click',
   () => {
     connectToServer();
+
     window.focus();
   },
 );

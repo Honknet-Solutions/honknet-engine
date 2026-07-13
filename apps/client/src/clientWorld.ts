@@ -5,10 +5,21 @@ import type {
 
 export type ClientWorldState = {
   serverTick: number | null;
+
   entities: ReadonlyMap<
     EntityNetId,
     EntitySnapshot
   >;
+};
+
+export type ClientWorldSnapshotResult = {
+  serverTick: number;
+
+  createdEntityIds: EntityNetId[];
+
+  updatedEntityIds: EntityNetId[];
+
+  removedEntityIds: EntityNetId[];
 };
 
 export class ClientWorld {
@@ -24,22 +35,97 @@ export class ClientWorld {
   public applySnapshot(
     serverTick: number,
     snapshots: readonly EntitySnapshot[],
-  ): void {
-    this.serverTick = serverTick;
+  ): ClientWorldSnapshotResult {
+    const createdEntityIds:
+      EntityNetId[] = [];
 
-    this.entities.clear();
+    const updatedEntityIds:
+      EntityNetId[] = [];
+
+    const removedEntityIds:
+      EntityNetId[] = [];
+
+    const snapshotEntityIds =
+      new Set<EntityNetId>();
 
     for (const snapshot of snapshots) {
-      this.entities.set(
+      snapshotEntityIds.add(
         snapshot.net_id,
-        cloneEntitySnapshot(snapshot),
+      );
+
+      const existingEntity =
+        this.entities.get(
+          snapshot.net_id,
+        );
+
+      if (!existingEntity) {
+        this.entities.set(
+          snapshot.net_id,
+          cloneEntitySnapshot(
+            snapshot,
+          ),
+        );
+
+        createdEntityIds.push(
+          snapshot.net_id,
+        );
+
+        continue;
+      }
+
+      if (
+        updateEntitySnapshot(
+          existingEntity,
+          snapshot,
+        )
+      ) {
+        updatedEntityIds.push(
+          snapshot.net_id,
+        );
+      }
+    }
+
+    for (
+      const entityNetId
+      of this.entities.keys()
+    ) {
+      if (
+        snapshotEntityIds.has(
+          entityNetId,
+        )
+      ) {
+        continue;
+      }
+
+      this.entities.delete(
+        entityNetId,
+      );
+
+      removedEntityIds.push(
+        entityNetId,
       );
     }
+
+    this.serverTick =
+      serverTick;
+
+    return {
+      serverTick,
+      createdEntityIds,
+      updatedEntityIds,
+      removedEntityIds,
+    };
   }
 
-  public clear(): void {
+  public clear(): EntityNetId[] {
+    const removedEntityIds = [
+      ...this.entities.keys(),
+    ];
+
     this.serverTick = null;
     this.entities.clear();
+
+    return removedEntityIds;
   }
 
   public getServerTick():
@@ -87,11 +173,63 @@ function cloneEntitySnapshot(
 ): EntitySnapshot {
   return {
     net_id: snapshot.net_id,
-    prototype: snapshot.prototype,
+
+    prototype:
+      snapshot.prototype,
+
     position: {
       x: snapshot.position.x,
       y: snapshot.position.y,
       z: snapshot.position.z,
     },
   };
+}
+
+function updateEntitySnapshot(
+  target: EntitySnapshot,
+  source: EntitySnapshot,
+): boolean {
+  let changed = false;
+
+  if (
+    target.prototype !==
+    source.prototype
+  ) {
+    target.prototype =
+      source.prototype;
+
+    changed = true;
+  }
+
+  if (
+    target.position.x !==
+    source.position.x
+  ) {
+    target.position.x =
+      source.position.x;
+
+    changed = true;
+  }
+
+  if (
+    target.position.y !==
+    source.position.y
+  ) {
+    target.position.y =
+      source.position.y;
+
+    changed = true;
+  }
+
+  if (
+    target.position.z !==
+    source.position.z
+  ) {
+    target.position.z =
+      source.position.z;
+
+    changed = true;
+  }
+
+  return changed;
 }
