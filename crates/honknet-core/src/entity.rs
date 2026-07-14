@@ -3,16 +3,7 @@ use std::{
     collections::HashMap,
 };
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    PartialOrd,
-    Ord,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntityId(u64);
 
 impl EntityId {
@@ -90,12 +81,7 @@ impl Entity {
     {
         self.components
             .get(&TypeId::of::<T>())
-            .and_then(|component| {
-                component
-                    .as_ref()
-                    .as_any()
-                    .downcast_ref::<T>()
-            })
+            .and_then(|component| component.as_ref().as_any().downcast_ref::<T>())
     }
 
     pub fn get_mut<T>(&mut self) -> Option<&mut T>
@@ -104,11 +90,6 @@ impl Entity {
     {
         self.components
             .get_mut(&TypeId::of::<T>())
-            .and_then(|component| {
-                component
-                    .as_mut()
-                    .as_any_mut()
-                    .downcast_mut::<T>()
-            })
+            .and_then(|component| component.as_mut().as_any_mut().downcast_mut::<T>())
     }
 }

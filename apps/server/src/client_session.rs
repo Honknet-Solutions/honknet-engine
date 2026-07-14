@@ -10,18 +10,11 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::{
-    app_state::AppState,
-    server_state::InputUpdateResult,
-};
+use crate::{app_state::AppState, server_state::InputUpdateResult};
 
 const MAX_CHAT_LENGTH: usize = 500;
 
-pub async fn run(
-    stream: TcpStream,
-    peer_addr: SocketAddr,
-    state: AppState,
-) -> Result<()> {
+pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: AppState) -> Result<()> {
     info!(%peer_addr, "Client connected");
 
     let websocket = accept_async(stream)
@@ -124,7 +117,11 @@ async fn handle_client_message(
     message: ClientMessage,
 ) -> Result<()> {
     match message {
-        ClientMessage::Hello { protocol_version, client_version, identity_id: requested_identity } => {
+        ClientMessage::Hello {
+            protocol_version,
+            client_version,
+            identity_id: requested_identity,
+        } => {
             if protocol_version != PROTOCOL_VERSION {
                 send(sender, &ServerMessage::Error {
                     message: format!("Protocol mismatch: server={PROTOCOL_VERSION}, client={protocol_version}"),
@@ -132,9 +129,13 @@ async fn handle_client_message(
                 return Ok(());
             }
             if identity_id.is_some() {
-                send(sender, &ServerMessage::Error {
-                    message: "Hello was already accepted".to_string(),
-                }).await?;
+                send(
+                    sender,
+                    &ServerMessage::Error {
+                        message: "Hello was already accepted".to_string(),
+                    },
+                )
+                .await?;
                 return Ok(());
             }
 
@@ -151,41 +152,59 @@ async fn handle_client_message(
             *identity_id = Some(requested_identity);
             *player_net_id = Some(entity_net_id);
 
-            send(sender, &ServerMessage::Welcome {
-                protocol_version: PROTOCOL_VERSION,
-                client_id,
-                entity_net_id,
-                map,
-            }).await?;
+            send(
+                sender,
+                &ServerMessage::Welcome {
+                    protocol_version: PROTOCOL_VERSION,
+                    client_id,
+                    entity_net_id,
+                    map,
+                },
+            )
+            .await?;
             let snapshot = snapshot_tracker.encode(snapshot)?;
             send(sender, &snapshot).await?;
         }
 
-        ClientMessage::Input { seq, client_tick, movement } => {
+        ClientMessage::Input {
+            seq,
+            client_tick,
+            movement,
+        } => {
             let Some(entity_net_id) = *player_net_id else {
-                send(sender, &ServerMessage::Error {
-                    message: "Input rejected before handshake".to_string(),
-                }).await?;
+                send(
+                    sender,
+                    &ServerMessage::Error {
+                        message: "Input rejected before handshake".to_string(),
+                    },
+                )
+                .await?;
                 return Ok(());
             };
 
-            match state
-                .game
-                .write()
-                .await
-                .set_movement_input(entity_net_id, seq, client_tick, movement)
-            {
+            match state.game.write().await.set_movement_input(
+                entity_net_id,
+                seq,
+                client_tick,
+                movement,
+            ) {
                 InputUpdateResult::Accepted | InputUpdateResult::Stale => {}
                 InputUpdateResult::EntityMissing => {
-                    send(sender, &ServerMessage::Error {
-                        message: "Player entity is missing".to_string(),
-                    }).await?;
+                    send(
+                        sender,
+                        &ServerMessage::Error {
+                            message: "Player entity is missing".to_string(),
+                        },
+                    )
+                    .await?;
                 }
             }
         }
 
         ClientMessage::Interact { target } => {
-            let Some(entity_net_id) = *player_net_id else { return Ok(()); };
+            let Some(entity_net_id) = *player_net_id else {
+                return Ok(());
+            };
             if let Some(text) = state.game.write().await.interact(entity_net_id, target) {
                 send(sender, &ServerMessage::System { text }).await?;
             }
@@ -198,7 +217,9 @@ async fn handle_client_message(
         }
 
         ClientMessage::Chat { text } => {
-            let Some(entity_net_id) = *player_net_id else { return Ok(()); };
+            let Some(entity_net_id) = *player_net_id else {
+                return Ok(());
+            };
             let text = text.trim();
             if text.is_empty() {
                 return Ok(());
@@ -219,7 +240,6 @@ async fn handle_client_message(
     Ok(())
 }
 
-
 #[derive(Default)]
 struct SnapshotTracker {
     initialized: bool,
@@ -233,7 +253,8 @@ impl SnapshotTracker {
             last_processed_input_seq,
             last_processed_client_tick,
             entities,
-        } = message else {
+        } = message
+        else {
             return Ok(message);
         };
 
@@ -295,8 +316,7 @@ async fn send(
     >,
     message: &ServerMessage,
 ) -> Result<()> {
-    let text = serde_json::to_string(message)
-        .context("failed to serialize server message")?;
+    let text = serde_json::to_string(message).context("failed to serialize server message")?;
     sender.send(Message::Text(text)).await?;
     Ok(())
 }

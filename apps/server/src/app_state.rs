@@ -80,8 +80,7 @@ fn initialize_persistence() -> Option<Arc<JsonStore>> {
         info!("Persistence is disabled by configuration");
         return None;
     }
-    let root = std::env::var("HONKNET_SAVE_ROOT")
-        .unwrap_or_else(|_| "data/saves".to_owned());
+    let root = std::env::var("HONKNET_SAVE_ROOT").unwrap_or_else(|_| "data/saves".to_owned());
     Some(Arc::new(JsonStore::new(root)))
 }
 

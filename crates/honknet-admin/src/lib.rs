@@ -13,7 +13,8 @@ pub struct Principal {
 
 impl Principal {
     pub fn can(&self, permission: &str) -> bool {
-        self.permissions.contains(&Permission(permission.to_owned()))
+        self.permissions
+            .contains(&Permission(permission.to_owned()))
             || self.permissions.contains(&Permission("*".to_owned()))
     }
 }
@@ -28,7 +29,8 @@ pub enum CommandError {
     Failed(String),
 }
 
-pub type CommandHandler<C> = Box<dyn Fn(&mut C, &[&str]) -> Result<String, CommandError> + Send + Sync>;
+pub type CommandHandler<C> =
+    Box<dyn Fn(&mut C, &[&str]) -> Result<String, CommandError> + Send + Sync>;
 
 pub struct CommandRegistry<C> {
     commands: HashMap<String, RegisteredCommand<C>>,
@@ -41,7 +43,9 @@ struct RegisteredCommand<C> {
 
 impl<C> Default for CommandRegistry<C> {
     fn default() -> Self {
-        Self { commands: HashMap::new() }
+        Self {
+            commands: HashMap::new(),
+        }
     }
 }
 
@@ -52,10 +56,15 @@ impl<C> CommandRegistry<C> {
         permission: Option<String>,
         handler: CommandHandler<C>,
     ) -> bool {
-        self.commands.insert(name.into(), RegisteredCommand {
-            permission,
-            handler,
-        }).is_none()
+        self.commands
+            .insert(
+                name.into(),
+                RegisteredCommand {
+                    permission,
+                    handler,
+                },
+            )
+            .is_none()
     }
 
     pub fn execute(
@@ -65,8 +74,13 @@ impl<C> CommandRegistry<C> {
         command_line: &str,
     ) -> Result<String, CommandError> {
         let mut parts = command_line.split_whitespace();
-        let name = parts.next().ok_or_else(|| CommandError::Unknown(String::new()))?;
-        let command = self.commands.get(name).ok_or_else(|| CommandError::Unknown(name.to_owned()))?;
+        let name = parts
+            .next()
+            .ok_or_else(|| CommandError::Unknown(String::new()))?;
+        let command = self
+            .commands
+            .get(name)
+            .ok_or_else(|| CommandError::Unknown(name.to_owned()))?;
         if let Some(permission) = &command.permission {
             if !principal.can(permission) {
                 return Err(CommandError::PermissionDenied(permission.clone()));

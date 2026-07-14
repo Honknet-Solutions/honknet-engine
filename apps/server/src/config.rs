@@ -1,4 +1,7 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -22,8 +25,7 @@ impl ServerConfig {
         let path = path.as_ref();
         let text = fs::read_to_string(path)
             .with_context(|| format!("failed to read config {}", path.display()))?;
-        toml::from_str(&text)
-            .with_context(|| format!("failed to parse config {}", path.display()))
+        toml::from_str(&text).with_context(|| format!("failed to parse config {}", path.display()))
     }
 
     pub fn load_default() -> Result<Self> {
@@ -172,20 +174,54 @@ impl Default for PersistenceSection {
     }
 }
 
-fn default_true() -> bool { true }
-fn default_engine_name() -> String { "Honknet Engine".to_owned() }
-fn default_engine_version() -> String { env!("CARGO_PKG_VERSION").to_owned() }
-fn default_protocol_version() -> u32 { 1 }
-fn default_tick_rate() -> u64 { 30 }
-fn default_listen() -> String { "0.0.0.0:3015".to_owned() }
-fn default_snapshot_rate() -> u64 { 20 }
-fn default_pvs_radius() -> f32 { 32.0 }
-fn default_prototype_roots() -> Vec<String> { vec!["game/example-module/content/prototypes".to_owned()] }
-fn default_map_roots() -> Vec<String> { vec!["game/example-module/maps".to_owned()] }
-fn default_startup_map() -> String { "game/example-module/maps/debug-map.yml".to_owned() }
-fn default_resource_roots() -> Vec<String> { vec!["game/example-module/resources".to_owned()] }
-fn default_localization_roots() -> Vec<String> { vec!["game/example-module/localization".to_owned()] }
-fn default_script_host() -> String { "apps/script-host/dist/main.js".to_owned() }
-fn default_game_module() -> String { "game/example-module/server/dist/index.js".to_owned() }
-fn default_save_root() -> String { "data/saves".to_owned() }
-fn default_autosave_seconds() -> u64 { 300 }
+fn default_true() -> bool {
+    true
+}
+fn default_engine_name() -> String {
+    "Honknet Engine".to_owned()
+}
+fn default_engine_version() -> String {
+    env!("CARGO_PKG_VERSION").to_owned()
+}
+fn default_protocol_version() -> u32 {
+    1
+}
+fn default_tick_rate() -> u64 {
+    30
+}
+fn default_listen() -> String {
+    "0.0.0.0:3015".to_owned()
+}
+fn default_snapshot_rate() -> u64 {
+    20
+}
+fn default_pvs_radius() -> f32 {
+    32.0
+}
+fn default_prototype_roots() -> Vec<String> {
+    vec!["game/example-module/content/prototypes".to_owned()]
+}
+fn default_map_roots() -> Vec<String> {
+    vec!["game/example-module/maps".to_owned()]
+}
+fn default_startup_map() -> String {
+    "game/example-module/maps/debug-map.yml".to_owned()
+}
+fn default_resource_roots() -> Vec<String> {
+    vec!["game/example-module/resources".to_owned()]
+}
+fn default_localization_roots() -> Vec<String> {
+    vec!["game/example-module/localization".to_owned()]
+}
+fn default_script_host() -> String {
+    "apps/script-host/dist/main.js".to_owned()
+}
+fn default_game_module() -> String {
+    "game/example-module/server/dist/index.js".to_owned()
+}
+fn default_save_root() -> String {
+    "data/saves".to_owned()
+}
+fn default_autosave_seconds() -> u64 {
+    300
+}

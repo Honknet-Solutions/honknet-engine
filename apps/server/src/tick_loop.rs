@@ -19,7 +19,12 @@ pub async fn run(state: AppState, tick_rate: u64) -> Result<()> {
     let mut interval = time::interval(tick_duration);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
-    info!(tick_rate, ?tick_duration, autosave_seconds, "Starting server tick loop");
+    info!(
+        tick_rate,
+        ?tick_duration,
+        autosave_seconds,
+        "Starting server tick loop"
+    );
 
     loop {
         interval.tick().await;
@@ -48,9 +53,15 @@ pub async fn run(state: AppState, tick_rate: u64) -> Result<()> {
         };
 
         match script_response {
-            Some(Ok(ScriptToEngine::TickResult { tick: response_tick, commands })) => {
+            Some(Ok(ScriptToEngine::TickResult {
+                tick: response_tick,
+                commands,
+            })) => {
                 if response_tick != tick {
-                    warn!(tick, response_tick, "Discarding out-of-order script response");
+                    warn!(
+                        tick,
+                        response_tick, "Discarding out-of-order script response"
+                    );
                     continue;
                 }
                 let outgoing = state.game.write().await.apply_script_commands(commands);

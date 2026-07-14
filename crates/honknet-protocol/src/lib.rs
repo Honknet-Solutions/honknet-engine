@@ -73,22 +73,11 @@ pub enum SpriteSourceSnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "component", content = "data")]
 pub enum ComponentSnapshot {
-    Player {
-        display_name: String,
-        online: bool,
-    },
-    Door {
-        open: bool,
-    },
-    Item {
-        name: String,
-    },
-    Inventory {
-        items: Vec<String>,
-    },
-    Sprite {
-        layers: Vec<SpriteLayerSnapshot>,
-    },
+    Player { display_name: String, online: bool },
+    Door { open: bool },
+    Item { name: String },
+    Inventory { items: Vec<String> },
+    Sprite { layers: Vec<SpriteLayerSnapshot> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

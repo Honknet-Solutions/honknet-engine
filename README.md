@@ -31,6 +31,3 @@ Studio:
 npm run dev:studio
 ```
 
-## Важно
-
-Это полный самодостаточный release candidate. Перед публичным релизом обязательно прогнать `docs/RELEASE_CHECKLIST.md` в целевой Linux/Windows среде. Rust toolchain недоступен в среде, где архив был собран, поэтому финальную проверку `cargo test`, `cargo clippy` и нагрузочный тест нужно выполнить локально.

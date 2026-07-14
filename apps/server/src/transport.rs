@@ -4,7 +4,6 @@ use tracing::{error, info};
 
 use crate::{app_state::AppState, client_session};
 
-
 pub async fn run(listen_addr: &str, state: AppState) -> Result<()> {
     let listener = TcpListener::bind(listen_addr)
         .await

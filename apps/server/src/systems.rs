@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use honknet_core::{EntityId, System, Transform, World};
 
@@ -88,12 +91,28 @@ impl System for MovementSystem {
             let mut next_y = position.1;
 
             let candidate_x = next_x + movement.x * distance;
-            if !is_blocked(world, &self.map, entity_id, candidate_x, next_y, position.2, radius) {
+            if !is_blocked(
+                world,
+                &self.map,
+                entity_id,
+                candidate_x,
+                next_y,
+                position.2,
+                radius,
+            ) {
                 next_x = candidate_x;
             }
 
             let candidate_y = next_y + movement.y * distance;
-            if !is_blocked(world, &self.map, entity_id, next_x, candidate_y, position.2, radius) {
+            if !is_blocked(
+                world,
+                &self.map,
+                entity_id,
+                next_x,
+                candidate_y,
+                position.2,
+                radius,
+            ) {
                 next_y = candidate_y;
             }
 

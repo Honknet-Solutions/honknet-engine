@@ -37,24 +37,68 @@ pub struct ScriptEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ScriptToEngine {
-    Ready { module_id: String },
-    TickResult { tick: u64, commands: Vec<ScriptCommand> },
-    Log { level: String, message: String },
-    Error { message: String, stack: Option<String> },
+    Ready {
+        module_id: String,
+    },
+    TickResult {
+        tick: u64,
+        commands: Vec<ScriptCommand>,
+    },
+    Log {
+        level: String,
+        message: String,
+    },
+    Error {
+        message: String,
+        stack: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", content = "data")]
 pub enum ScriptCommand {
-    Log { level: String, message: String },
-    EmitSystemMessage { text: String },
-    Spawn { prototype: String, x: f32, y: f32, z: i32 },
-    Delete { entity: ScriptEntityId },
-    EmitEvent { name: String, entity: Option<ScriptEntityId>, payload: Value },
-    SetComponent { entity: ScriptEntityId, component: String, state: Value },
-    RemoveComponent { entity: ScriptEntityId, component: String },
-    OpenUi { player: ScriptEntityId, target: ScriptEntityId, key: String, state: Value },
-    PlaySound { path: String, x: f32, y: f32, z: i32 },
+    Log {
+        level: String,
+        message: String,
+    },
+    EmitSystemMessage {
+        text: String,
+    },
+    Spawn {
+        prototype: String,
+        x: f32,
+        y: f32,
+        z: i32,
+    },
+    Delete {
+        entity: ScriptEntityId,
+    },
+    EmitEvent {
+        name: String,
+        entity: Option<ScriptEntityId>,
+        payload: Value,
+    },
+    SetComponent {
+        entity: ScriptEntityId,
+        component: String,
+        state: Value,
+    },
+    RemoveComponent {
+        entity: ScriptEntityId,
+        component: String,
+    },
+    OpenUi {
+        player: ScriptEntityId,
+        target: ScriptEntityId,
+        key: String,
+        state: Value,
+    },
+    PlaySound {
+        path: String,
+        x: f32,
+        y: f32,
+        z: i32,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -87,8 +131,15 @@ impl NodeScriptHost {
             .stderr(Stdio::inherit())
             .spawn()?;
         let input = child.stdin.take().ok_or(ScriptHostError::PipeUnavailable)?;
-        let output = child.stdout.take().ok_or(ScriptHostError::PipeUnavailable)?;
-        Ok(Self { child, input, output: BufReader::new(output) })
+        let output = child
+            .stdout
+            .take()
+            .ok_or(ScriptHostError::PipeUnavailable)?;
+        Ok(Self {
+            child,
+            input,
+            output: BufReader::new(output),
+        })
     }
 
     pub fn request(&mut self, message: &EngineToScript) -> Result<ScriptToEngine, ScriptHostError> {

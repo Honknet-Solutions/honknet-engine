@@ -1,4 +1,8 @@
-use std::{fs, io::Write, path::{Path, PathBuf}};
+use std::{
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
@@ -6,7 +10,10 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum PersistenceError {
     #[error("I/O error at {path}: {source}")]
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("serialization error: {0}")]
     Serialize(#[from] serde_json::Error),
 }
@@ -35,10 +42,11 @@ impl JsonStore {
             path: temporary.clone(),
             source,
         })?;
-        file.write_all(&data).map_err(|source| PersistenceError::Io {
-            path: temporary.clone(),
-            source,
-        })?;
+        file.write_all(&data)
+            .map_err(|source| PersistenceError::Io {
+                path: temporary.clone(),
+                source,
+            })?;
         file.sync_all().map_err(|source| PersistenceError::Io {
             path: temporary.clone(),
             source,
@@ -73,7 +81,13 @@ impl JsonStore {
     fn path_for(&self, key: &str) -> PathBuf {
         let safe = key
             .chars()
-            .map(|character| if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '/') { character } else { '_' })
+            .map(|character| {
+                if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '/') {
+                    character
+                } else {
+                    '_'
+                }
+            })
             .collect::<String>();
         self.root.join(Path::new(&safe)).with_extension("json")
     }

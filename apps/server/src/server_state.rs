@@ -5,12 +5,10 @@ use std::{
 };
 
 use anyhow::Result;
-use honknet_core::{
-    EntityId, NetworkIdentity, PrototypeRef, SystemManager, Transform, World,
-};
+use honknet_core::{EntityId, NetworkIdentity, PrototypeRef, SystemManager, Transform, World};
 use honknet_protocol::{
-    ClientId, ComponentSnapshot, EntityNetId, EntitySnapshot, NetPosition,
-    PlayerIdentityId, ServerMessage, SpriteLayerSnapshot, SpriteSourceSnapshot, Vec2,
+    ClientId, ComponentSnapshot, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId,
+    ServerMessage, SpriteLayerSnapshot, SpriteSourceSnapshot, Vec2,
 };
 
 use honknet_script::{ScriptCommand, ScriptEvent};
@@ -19,8 +17,8 @@ use serde_json::json;
 
 use crate::{
     components::{
-        ColliderComponent, DoorComponent, InventoryComponent, ItemComponent,
-        PlayerComponent, PlayerInputComponent, SpriteComponent,
+        ColliderComponent, DoorComponent, InventoryComponent, ItemComponent, PlayerComponent,
+        PlayerInputComponent, SpriteComponent,
     },
     game_map::GameMap,
     prototypes::{PrototypeCatalog, PrototypeKind},
@@ -104,7 +102,10 @@ impl ServerState {
         let item_spawn = state.map.item_spawn;
         state.spawn_item(
             WRENCH_PROTOTYPE,
-            Vec2 { x: item_spawn.0, y: item_spawn.1 },
+            Vec2 {
+                x: item_spawn.0,
+                y: item_spawn.1,
+            },
         );
 
         Ok(state)
@@ -125,11 +126,17 @@ impl ServerState {
         identity_id: PlayerIdentityId,
     ) -> EntityNetId {
         if let Some(record) = self.players.get(&identity_id).cloned() {
-            if let Some(player) = self.world.get_component_mut::<PlayerComponent>(record.entity_id) {
+            if let Some(player) = self
+                .world
+                .get_component_mut::<PlayerComponent>(record.entity_id)
+            {
                 player.online = true;
             }
 
-            if let Some(input) = self.world.get_component_mut::<PlayerInputComponent>(record.entity_id) {
+            if let Some(input) = self
+                .world
+                .get_component_mut::<PlayerInputComponent>(record.entity_id)
+            {
                 *input = PlayerInputComponent::new();
             }
 
@@ -149,7 +156,12 @@ impl ServerState {
         let entity_id = self.world.spawn();
         let display_name = guest_display_name(&identity_id);
 
-        self.add_base_components(entity_id, entity_net_id, PLAYER_PROTOTYPE, Vec2 { x: 2.5, y: 2.5 });
+        self.add_base_components(
+            entity_id,
+            entity_net_id,
+            PLAYER_PROTOTYPE,
+            Vec2 { x: 2.5, y: 2.5 },
+        );
         self.world
             .add_component(entity_id, player_sprite())
             .expect("player entity must exist");
@@ -194,10 +206,16 @@ impl ServerState {
         let record = self.players.get_mut(identity_id)?;
         record.client_id = None;
 
-        if let Some(player) = self.world.get_component_mut::<PlayerComponent>(record.entity_id) {
+        if let Some(player) = self
+            .world
+            .get_component_mut::<PlayerComponent>(record.entity_id)
+        {
             player.online = false;
         }
-        if let Some(input) = self.world.get_component_mut::<PlayerInputComponent>(record.entity_id) {
+        if let Some(input) = self
+            .world
+            .get_component_mut::<PlayerInputComponent>(record.entity_id)
+        {
             input.stop();
         }
         self.script_events.push(ScriptEvent {
@@ -219,7 +237,10 @@ impl ServerState {
         let Some(entity_id) = self.network_entities.get(&entity_net_id).copied() else {
             return InputUpdateResult::EntityMissing;
         };
-        let Some(input) = self.world.get_component_mut::<PlayerInputComponent>(entity_id) else {
+        let Some(input) = self
+            .world
+            .get_component_mut::<PlayerInputComponent>(entity_id)
+        else {
             return InputUpdateResult::EntityMissing;
         };
 
@@ -282,7 +303,9 @@ impl ServerState {
             .map(|item| item.name.clone());
 
         if let Some(item_name) = item_name {
-            let inventory = self.world.get_component_mut::<InventoryComponent>(actor_id)?;
+            let inventory = self
+                .world
+                .get_component_mut::<InventoryComponent>(actor_id)?;
             inventory.items.push(item_name.clone());
             let _ = self.world.despawn(target_id);
             let _ = self.network_entities.remove(&target_net_id);
@@ -305,8 +328,8 @@ impl ServerState {
             .and_then(|id| self.world.get_component::<Transform>(id))
             .map(|transform| (transform.position, transform.z));
 
-        let input_state = requester_id
-            .and_then(|id| self.world.get_component::<PlayerInputComponent>(id));
+        let input_state =
+            requester_id.and_then(|id| self.world.get_component::<PlayerInputComponent>(id));
 
         let mut entities = self
             .world
@@ -321,9 +344,8 @@ impl ServerState {
                         return None;
                     }
 
-                    let distance_squared =
-                        (requester_position.x - transform.position.x).powi(2)
-                            + (requester_position.y - transform.position.y).powi(2);
+                    let distance_squared = (requester_position.x - transform.position.x).powi(2)
+                        + (requester_position.y - transform.position.y).powi(2);
                     if distance_squared > self.pvs_radius * self.pvs_radius {
                         return None;
                     }
@@ -382,29 +404,41 @@ impl ServerState {
         }
     }
 
-
-
     pub fn persistence_snapshot(&self) -> PersistedWorld {
         let mut players = self
             .players
-            .iter()
-            .filter_map(|(_identity_id, record)| {
+            .values()
+            .filter_map(|record| {
                 let transform = self.world.get_component::<Transform>(record.entity_id)?;
-                let inventory = self.world.get_component::<InventoryComponent>(record.entity_id)?;
-                let player = self.world.get_component::<PlayerComponent>(record.entity_id)?;
+
+                let inventory = self
+                    .world
+                    .get_component::<InventoryComponent>(record.entity_id)?;
+
+                let player = self
+                    .world
+                    .get_component::<PlayerComponent>(record.entity_id)?;
+
                 Some(PersistedPlayer {
                     identity_id: player.identity_id.clone(),
+
                     position: NetPosition {
                         x: transform.position.x,
                         y: transform.position.y,
                         z: transform.z,
                     },
+
                     inventory: inventory.items.clone(),
                 })
             })
             .collect::<Vec<_>>();
+
         players.sort_by(|left, right| left.identity_id.cmp(&right.identity_id));
-        PersistedWorld { version: 1, players }
+
+        PersistedWorld {
+            version: 1,
+            players,
+        }
     }
 
     pub fn restore_persistence(&mut self, persisted: PersistedWorld) {
@@ -421,7 +455,10 @@ impl ServerState {
                 entity_id,
                 entity_net_id,
                 PLAYER_PROTOTYPE,
-                Vec2 { x: player.position.x, y: player.position.y },
+                Vec2 {
+                    x: player.position.x,
+                    y: player.position.y,
+                },
             );
             if let Some(transform) = self.world.get_component_mut::<Transform>(entity_id) {
                 transform.z = player.position.z;
@@ -446,7 +483,12 @@ impl ServerState {
                 .add_component(entity_id, ColliderComponent { radius: 0.32 })
                 .expect("restored player entity must exist");
             self.world
-                .add_component(entity_id, InventoryComponent { items: player.inventory })
+                .add_component(
+                    entity_id,
+                    InventoryComponent {
+                        items: player.inventory,
+                    },
+                )
                 .expect("restored player entity must exist");
             let _ = self.players.insert(
                 player.identity_id,
@@ -493,25 +535,45 @@ impl ServerState {
                 }
                 ScriptCommand::Delete { entity } => {
                     if let Some(entity_id) = self.network_entities.get(&entity).copied() {
-                        if self.world.get_component::<PlayerComponent>(entity_id).is_none() {
+                        if self
+                            .world
+                            .get_component::<PlayerComponent>(entity_id)
+                            .is_none()
+                        {
                             let _ = self.world.despawn(entity_id);
                             let _ = self.network_entities.remove(&entity);
                         }
                     }
                 }
-                ScriptCommand::EmitEvent { name, entity, payload } => {
-                    self.script_events.push(ScriptEvent { name, entity, payload });
+                ScriptCommand::EmitEvent {
+                    name,
+                    entity,
+                    payload,
+                } => {
+                    self.script_events.push(ScriptEvent {
+                        name,
+                        entity,
+                        payload,
+                    });
                 }
-                ScriptCommand::SetComponent { entity, component, state } => {
+                ScriptCommand::SetComponent {
+                    entity,
+                    component,
+                    state,
+                } => {
                     let Some(entity_id) = self.network_entities.get(&entity).copied() else {
                         continue;
                     };
                     if component == "Door" {
                         if let Some(open) = state.get("open").and_then(|value| value.as_bool()) {
-                            if let Some(door) = self.world.get_component_mut::<DoorComponent>(entity_id) {
+                            if let Some(door) =
+                                self.world.get_component_mut::<DoorComponent>(entity_id)
+                            {
                                 door.open = open;
                             }
-                            if let Some(sprite) = self.world.get_component_mut::<SpriteComponent>(entity_id) {
+                            if let Some(sprite) =
+                                self.world.get_component_mut::<SpriteComponent>(entity_id)
+                            {
                                 *sprite = door_sprite(open);
                             }
                         }
@@ -525,7 +587,12 @@ impl ServerState {
                         let _ = self.world.remove_component::<DoorComponent>(entity_id);
                     }
                 }
-                ScriptCommand::OpenUi { player: _, target, key, state } => {
+                ScriptCommand::OpenUi {
+                    player: _,
+                    target,
+                    key,
+                    state,
+                } => {
                     outgoing.push(ServerMessage::UiOpen {
                         session_id: format!("script-{}-{target}", self.tick),
                         key,
@@ -615,7 +682,6 @@ impl ServerState {
         net_id
     }
 }
-
 
 fn player_sprite() -> SpriteComponent {
     SpriteComponent {
@@ -728,7 +794,10 @@ mod tests {
         let ServerMessage::Snapshot { entities, .. } = state.snapshot_for(player) else {
             panic!("expected snapshot");
         };
-        let snapshot = entities.iter().find(|entity| entity.net_id == player).unwrap();
+        let snapshot = entities
+            .iter()
+            .find(|entity| entity.net_id == player)
+            .unwrap();
         assert!(snapshot.position.x > 2.5);
     }
 }

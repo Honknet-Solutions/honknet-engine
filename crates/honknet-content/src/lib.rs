@@ -12,9 +12,15 @@ use walkdir::WalkDir;
 #[derive(Debug, Error)]
 pub enum ContentError {
     #[error("failed to read {path}: {source}")]
-    Read { path: PathBuf, source: std::io::Error },
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("failed to parse {path}: {source}")]
-    Parse { path: PathBuf, source: serde_yaml::Error },
+    Parse {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
     #[error("duplicate prototype id {0}")]
     DuplicatePrototype(String),
     #[error("prototype {prototype} references missing parent {parent}")]
@@ -70,12 +76,11 @@ impl PrototypeRegistry {
                 path: file.clone(),
                 source,
             })?;
-            let documents: Vec<EntityPrototype> = serde_yaml::from_str(&text).map_err(|source| {
-                ContentError::Parse {
+            let documents: Vec<EntityPrototype> =
+                serde_yaml::from_str(&text).map_err(|source| ContentError::Parse {
                     path: file.clone(),
                     source,
-                }
-            })?;
+                })?;
             for prototype in documents {
                 if prototype.document_type != "entity" {
                     continue;
@@ -187,7 +192,12 @@ fn yaml_files(root: &Path) -> Vec<PathBuf> {
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_file())
         .map(|entry| entry.into_path())
-        .filter(|path| matches!(path.extension().and_then(|value| value.to_str()), Some("yml" | "yaml")))
+        .filter(|path| {
+            matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("yml" | "yaml")
+            )
+        })
         .collect::<Vec<_>>();
     files.sort();
     files
