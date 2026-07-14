@@ -1,12 +1,14 @@
 {
   "name": "@honknet-solutions/honknet-client",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "predev": "npm --prefix ../.. run copy:resources",
+    "prebuild": "npm --prefix ../.. run copy:resources"
   },
   "dependencies": {
     "pixi.js": "^8.19.0"

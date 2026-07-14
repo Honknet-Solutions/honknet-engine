@@ -46,16 +46,11 @@ where
 
 pub struct Entity {
     id: EntityId,
-    components: HashMap<
-        TypeId,
-        Box<dyn Component>,
-    >,
+    components: HashMap<TypeId, Box<dyn Component>>,
 }
 
 impl Entity {
-    pub(crate) fn new(
-        id: EntityId,
-    ) -> Self {
+    pub(crate) fn new(id: EntityId) -> Self {
         Self {
             id,
             components: HashMap::new(),
@@ -66,18 +61,12 @@ impl Entity {
         self.id
     }
 
-    pub fn insert<T>(
-        &mut self,
-        component: T,
-    ) -> bool
+    pub fn insert<T>(&mut self, component: T) -> bool
     where
         T: Component,
     {
         self.components
-            .insert(
-                TypeId::of::<T>(),
-                Box::new(component),
-            )
+            .insert(TypeId::of::<T>(), Box::new(component))
             .is_some()
     }
 
@@ -85,20 +74,14 @@ impl Entity {
     where
         T: Component,
     {
-        self.components
-            .remove(
-                &TypeId::of::<T>(),
-            )
-            .is_some()
+        self.components.remove(&TypeId::of::<T>()).is_some()
     }
 
     pub fn contains<T>(&self) -> bool
     where
         T: Component,
     {
-        self.components.contains_key(
-            &TypeId::of::<T>(),
-        )
+        self.components.contains_key(&TypeId::of::<T>())
     }
 
     pub fn get<T>(&self) -> Option<&T>
@@ -106,9 +89,7 @@ impl Entity {
         T: Component,
     {
         self.components
-            .get(
-                &TypeId::of::<T>(),
-            )
+            .get(&TypeId::of::<T>())
             .and_then(|component| {
                 component
                     .as_ref()
@@ -117,16 +98,12 @@ impl Entity {
             })
     }
 
-    pub fn get_mut<T>(
-        &mut self,
-    ) -> Option<&mut T>
+    pub fn get_mut<T>(&mut self) -> Option<&mut T>
     where
         T: Component,
     {
         self.components
-            .get_mut(
-                &TypeId::of::<T>(),
-            )
+            .get_mut(&TypeId::of::<T>())
             .and_then(|component| {
                 component
                     .as_mut()

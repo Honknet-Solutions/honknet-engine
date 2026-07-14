@@ -1,6 +1,8 @@
+use std::{fs, path::PathBuf};
+
 use anyhow::{bail, Context, Result};
+use honknet_content::MapDocument;
 use honknet_protocol::MapSnapshot;
-use serde::Deserialize;
 
 pub const TILE_FLOOR: u8 = 0;
 pub const TILE_WALL: u8 = 1;
@@ -12,59 +14,64 @@ pub struct GameMap {
     pub height: u16,
     pub tiles: Vec<u8>,
     pub door_spawn: (f32, f32),
-}
-
-#[derive(Debug, Deserialize)]
-struct MapDefinition {
-    id: String,
-    rows: Vec<String>,
+    pub item_spawn: (f32, f32),
 }
 
 impl GameMap {
     pub fn load_debug() -> Result<Self> {
-        let definition: MapDefinition =
-            serde_json::from_str(include_str!("../../../content/maps/debug-map.json"))
-                .context("failed to parse debug map")?;
-
-        let height = definition.rows.len();
+        let path = std::env::var("HONKNET_MAP")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("game/example-module/maps/debug-map.yml"));
+        let text = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read map {}", path.display()))?;
+        let document: MapDocument = serde_yaml::from_str(&text)
+            .with_context(|| format!("failed to parse map {}", path.display()))?;
+        let grid = document
+            .map
+            .grids
+            .first()
+            .context("map has no grids")?;
+        let chunk = grid.chunks.first().context("map grid has no chunks")?;
+        let height = chunk.tiles.len();
         if height == 0 {
-            bail!("map has no rows");
+            bail!("map has no tile rows");
         }
-
-        let width = definition.rows[0].chars().count();
+        let width = chunk.tiles[0].len();
         if width == 0 {
             bail!("map has zero width");
         }
 
         let mut tiles = Vec::with_capacity(width * height);
-        let mut door_spawn = None;
-
-        for (y, row) in definition.rows.iter().enumerate() {
-            if row.chars().count() != width {
+        for (y, row) in chunk.tiles.iter().enumerate() {
+            if row.len() != width {
                 bail!("map row {y} has an inconsistent width");
             }
-
-            for (x, character) in row.chars().enumerate() {
-                match character {
-                    '#' => tiles.push(TILE_WALL),
-                    '.' => tiles.push(TILE_FLOOR),
-                    'D' => {
-                        tiles.push(TILE_FLOOR);
-                        door_spawn = Some((x as f32 + 0.5, y as f32 + 0.5));
-                    }
-                    other => bail!("unsupported map character: {other}"),
+            for tile in row {
+                match tile.as_str() {
+                    "floor" => tiles.push(TILE_FLOOR),
+                    "wall" => tiles.push(TILE_WALL),
+                    other => bail!("unsupported tile id: {other}"),
                 }
             }
         }
 
-        let door_spawn = door_spawn.context("debug map has no door marker")?;
+        let mut door_spawn = None;
+        let mut item_spawn = None;
+        for entity in &document.map.entities {
+            match entity.prototype.as_str() {
+                "DebugDoor" => door_spawn = Some((entity.position[0], entity.position[1])),
+                "DebugWrench" => item_spawn = Some((entity.position[0], entity.position[1])),
+                _ => {}
+            }
+        }
 
         Ok(Self {
-            id: definition.id,
+            id: document.map.id,
             width: width.try_into().context("map is too wide")?,
             height: height.try_into().context("map is too tall")?,
             tiles,
-            door_spawn,
+            door_spawn: door_spawn.context("map has no DebugDoor placement")?,
+            item_spawn: item_spawn.unwrap_or((4.5, 4.5)),
         })
     }
 

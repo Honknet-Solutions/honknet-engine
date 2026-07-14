@@ -1,0 +1,22 @@
+map:
+  id: debug-map
+  grids:
+    - id: main
+      position: [0, 0]
+      rotation: 0
+      chunks:
+        - position: [0, 0]
+          tiles:
+            - [wall, wall, wall, wall, wall, wall, wall, wall]
+            - [wall, floor, floor, floor, floor, floor, floor, wall]
+            - [wall, floor, floor, floor, floor, floor, floor, wall]
+            - [wall, floor, floor, floor, floor, floor, floor, wall]
+            - [wall, floor, floor, floor, floor, floor, floor, wall]
+            - [wall, wall, wall, wall, wall, wall, wall, wall]
+  entities:
+    - prototype: DebugDoor
+      position: [4.5, 1.5]
+      grid: main
+    - prototype: DebugWrench
+      position: [4.5, 4.5]
+      grid: main

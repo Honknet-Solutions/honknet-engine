@@ -1,3 +1,5 @@
+export const PROTOCOL_VERSION = 1;
+
 export type EntityNetId = number;
 
 export type Vec2 = {
@@ -16,6 +18,20 @@ export type MapSnapshot = {
   width: number;
   height: number;
   tiles: number[];
+};
+
+export type SpriteLayerSnapshot = {
+  key: string;
+  source:
+    | { kind: 'texture'; path: string }
+    | { kind: 'rsi'; path: string; state: string };
+  visible: boolean;
+  color: [number, number, number, number];
+  scale: [number, number];
+  offset: [number, number];
+  rotation: number;
+  z_index: number;
+  direction: number;
 };
 
 export type ComponentSnapshot =
@@ -43,6 +59,12 @@ export type ComponentSnapshot =
       data: {
         items: string[];
       };
+    }
+  | {
+      component: 'Sprite';
+      data: {
+        layers: SpriteLayerSnapshot[];
+      };
     };
 
 export type EntitySnapshot = {
@@ -56,6 +78,7 @@ export type ClientMessage =
   | {
       type: 'Hello';
       data: {
+        protocol_version: number;
         client_version: string;
         identity_id: string;
       };
@@ -79,12 +102,27 @@ export type ClientMessage =
       data: {
         text: string;
       };
+    }
+  | {
+      type: 'SnapshotAck';
+      data: {
+        tick: number;
+      };
+    }
+  | {
+      type: 'UiAction';
+      data: {
+        session_id: string;
+        action: string;
+        payload: unknown;
+      };
     };
 
 export type ServerMessage =
   | {
       type: 'Welcome';
       data: {
+        protocol_version: number;
         client_id: string;
         entity_net_id: EntityNetId;
         map: MapSnapshot;
@@ -100,6 +138,17 @@ export type ServerMessage =
       };
     }
   | {
+      type: 'StateDelta';
+      data: {
+        tick: number;
+        last_processed_input_seq: number | null;
+        last_processed_client_tick: number | null;
+        spawns: EntitySnapshot[];
+        updates: EntitySnapshot[];
+        despawns: EntityNetId[];
+      };
+    }
+  | {
       type: 'Chat';
       data: {
         from: string;
@@ -110,6 +159,35 @@ export type ServerMessage =
       type: 'System';
       data: {
         text: string;
+      };
+    }
+  | {
+      type: 'UiOpen';
+      data: {
+        session_id: string;
+        key: string;
+        target: EntityNetId;
+        state: unknown;
+      };
+    }
+  | {
+      type: 'UiState';
+      data: {
+        session_id: string;
+        state: unknown;
+      };
+    }
+  | {
+      type: 'UiClose';
+      data: {
+        session_id: string;
+      };
+    }
+  | {
+      type: 'PlaySound';
+      data: {
+        path: string;
+        position: NetPosition | null;
       };
     }
   | {

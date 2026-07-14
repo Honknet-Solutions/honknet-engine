@@ -4,7 +4,6 @@ use tracing::{error, info};
 
 use crate::{app_state::AppState, client_session};
 
-pub const DEFAULT_LISTEN_ADDR: &str = "0.0.0.0:3015";
 
 pub async fn run(listen_addr: &str, state: AppState) -> Result<()> {
     let listener = TcpListener::bind(listen_addr)

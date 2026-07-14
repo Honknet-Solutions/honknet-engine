@@ -49,6 +49,10 @@ export class ClientEntity {
     return this.replicated.get('Inventory')?.data;
   }
 
+  public get sprite() {
+    return this.replicated.get('Sprite')?.data;
+  }
+
   public addComponent(component: ClientComponent): void {
     if (this.components.has(component.componentType)) {
       throw new Error(`Duplicate component ${component.componentType}`);

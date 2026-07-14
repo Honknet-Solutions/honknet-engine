@@ -43,7 +43,7 @@ impl World {
             .next_entity_id
             .checked_add(1)
             .expect("entity id space exhausted");
-        self.entities.insert(entity_id, Entity::new(entity_id));
+        let _ = self.entities.insert(entity_id, Entity::new(entity_id));
         entity_id
     }
 

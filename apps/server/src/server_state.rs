@@ -5,16 +5,22 @@ use std::{
 };
 
 use anyhow::Result;
-use honknet_core::{EntityId, NetworkIdentity, PrototypeRef, SystemManager, Transform, World};
-use honknet_protocol::{
-    ClientId, ComponentSnapshot, EntityNetId, EntitySnapshot, NetPosition, PlayerIdentityId,
-    ServerMessage, Vec2,
+use honknet_core::{
+    EntityId, NetworkIdentity, PrototypeRef, SystemManager, Transform, World,
 };
+use honknet_protocol::{
+    ClientId, ComponentSnapshot, EntityNetId, EntitySnapshot, NetPosition,
+    PlayerIdentityId, ServerMessage, SpriteLayerSnapshot, SpriteSourceSnapshot, Vec2,
+};
+
+use honknet_script::{ScriptCommand, ScriptEvent};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::{
     components::{
-        ColliderComponent, DoorComponent, InventoryComponent, ItemComponent, PlayerComponent,
-        PlayerInputComponent,
+        ColliderComponent, DoorComponent, InventoryComponent, ItemComponent,
+        PlayerComponent, PlayerInputComponent, SpriteComponent,
     },
     game_map::GameMap,
     prototypes::{PrototypeCatalog, PrototypeKind},
@@ -24,10 +30,9 @@ use crate::{
 const PLAYER_MOVE_SPEED: f32 = 4.0;
 const PLAYER_INPUT_TIMEOUT: Duration = Duration::from_millis(1500);
 const INTERACTION_RANGE: f32 = 1.75;
-const PVS_RADIUS: f32 = 24.0;
-const PLAYER_PROTOTYPE: &str = "debug.player";
-const DOOR_PROTOTYPE: &str = "debug.door";
-const WRENCH_PROTOTYPE: &str = "debug.item.wrench";
+const PLAYER_PROTOTYPE: &str = "DebugPlayer";
+const DOOR_PROTOTYPE: &str = "DebugDoor";
+const WRENCH_PROTOTYPE: &str = "DebugWrench";
 
 pub struct ServerState {
     tick: u64,
@@ -38,6 +43,8 @@ pub struct ServerState {
     network_entities: HashMap<EntityNetId, EntityId>,
     map: Arc<GameMap>,
     prototypes: PrototypeCatalog,
+    script_events: Vec<ScriptEvent>,
+    pvs_radius: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +59,19 @@ pub enum InputUpdateResult {
     Accepted,
     Stale,
     EntityMissing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedWorld {
+    pub version: u32,
+    pub players: Vec<PersistedPlayer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersistedPlayer {
+    pub identity_id: PlayerIdentityId,
+    pub position: NetPosition,
+    pub inventory: Vec<String>,
 }
 
 impl ServerState {
@@ -72,10 +92,20 @@ impl ServerState {
             network_entities: HashMap::new(),
             map,
             prototypes,
+            script_events: Vec::new(),
+            pvs_radius: std::env::var("HONKNET_PVS_RADIUS")
+                .ok()
+                .and_then(|value| value.parse::<f32>().ok())
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .unwrap_or(24.0),
         };
 
         state.spawn_door();
-        state.spawn_item(WRENCH_PROTOTYPE, Vec2 { x: 4.5, y: 4.5 });
+        let item_spawn = state.map.item_spawn;
+        state.spawn_item(
+            WRENCH_PROTOTYPE,
+            Vec2 { x: item_spawn.0, y: item_spawn.1 },
+        );
 
         Ok(state)
     }
@@ -95,17 +125,11 @@ impl ServerState {
         identity_id: PlayerIdentityId,
     ) -> EntityNetId {
         if let Some(record) = self.players.get(&identity_id).cloned() {
-            if let Some(player) = self
-                .world
-                .get_component_mut::<PlayerComponent>(record.entity_id)
-            {
+            if let Some(player) = self.world.get_component_mut::<PlayerComponent>(record.entity_id) {
                 player.online = true;
             }
 
-            if let Some(input) = self
-                .world
-                .get_component_mut::<PlayerInputComponent>(record.entity_id)
-            {
+            if let Some(input) = self.world.get_component_mut::<PlayerInputComponent>(record.entity_id) {
                 *input = PlayerInputComponent::new();
             }
 
@@ -113,6 +137,11 @@ impl ServerState {
                 player_record.client_id = Some(client_id);
             }
 
+            self.script_events.push(ScriptEvent {
+                name: "player.reconnected".to_owned(),
+                entity: Some(record.entity_net_id),
+                payload: json!({ "identity": identity_id }),
+            });
             return record.entity_net_id;
         }
 
@@ -120,12 +149,10 @@ impl ServerState {
         let entity_id = self.world.spawn();
         let display_name = guest_display_name(&identity_id);
 
-        self.add_base_components(
-            entity_id,
-            entity_net_id,
-            PLAYER_PROTOTYPE,
-            Vec2 { x: 2.5, y: 2.5 },
-        );
+        self.add_base_components(entity_id, entity_net_id, PLAYER_PROTOTYPE, Vec2 { x: 2.5, y: 2.5 });
+        self.world
+            .add_component(entity_id, player_sprite())
+            .expect("player entity must exist");
         self.world
             .add_component(
                 entity_id,
@@ -146,14 +173,19 @@ impl ServerState {
             .add_component(entity_id, InventoryComponent::default())
             .expect("player entity must exist");
 
-        self.players.insert(
-            identity_id,
+        let _ = self.players.insert(
+            identity_id.clone(),
             PlayerRecord {
                 client_id: Some(client_id),
                 entity_id,
                 entity_net_id,
             },
         );
+        self.script_events.push(ScriptEvent {
+            name: "player.connected".to_owned(),
+            entity: Some(entity_net_id),
+            payload: json!({ "identity": identity_id }),
+        });
 
         entity_net_id
     }
@@ -162,18 +194,17 @@ impl ServerState {
         let record = self.players.get_mut(identity_id)?;
         record.client_id = None;
 
-        if let Some(player) = self
-            .world
-            .get_component_mut::<PlayerComponent>(record.entity_id)
-        {
+        if let Some(player) = self.world.get_component_mut::<PlayerComponent>(record.entity_id) {
             player.online = false;
         }
-        if let Some(input) = self
-            .world
-            .get_component_mut::<PlayerInputComponent>(record.entity_id)
-        {
+        if let Some(input) = self.world.get_component_mut::<PlayerInputComponent>(record.entity_id) {
             input.stop();
         }
+        self.script_events.push(ScriptEvent {
+            name: "player.disconnected".to_owned(),
+            entity: Some(record.entity_net_id),
+            payload: json!({ "identity": identity_id }),
+        });
 
         Some(record.entity_net_id)
     }
@@ -188,10 +219,7 @@ impl ServerState {
         let Some(entity_id) = self.network_entities.get(&entity_net_id).copied() else {
             return InputUpdateResult::EntityMissing;
         };
-        let Some(input) = self
-            .world
-            .get_component_mut::<PlayerInputComponent>(entity_id)
-        else {
+        let Some(input) = self.world.get_component_mut::<PlayerInputComponent>(entity_id) else {
             return InputUpdateResult::EntityMissing;
         };
 
@@ -219,6 +247,11 @@ impl ServerState {
 
         let actor_id = self.network_entities.get(&actor_net_id).copied()?;
         let target_id = self.network_entities.get(&target_net_id).copied()?;
+        self.script_events.push(ScriptEvent {
+            name: "entity.interact".to_owned(),
+            entity: Some(target_net_id),
+            payload: json!({ "actor": actor_net_id, "target": target_net_id }),
+        });
 
         let actor_position = self.world.get_component::<Transform>(actor_id)?.position;
         let target_position = self.world.get_component::<Transform>(target_id)?.position;
@@ -232,7 +265,11 @@ impl ServerState {
 
         if let Some(door) = self.world.get_component_mut::<DoorComponent>(target_id) {
             door.open = !door.open;
-            return Some(if door.open {
+            let open = door.open;
+            if let Some(sprite) = self.world.get_component_mut::<SpriteComponent>(target_id) {
+                *sprite = door_sprite(open);
+            }
+            return Some(if open {
                 "Door opened.".to_string()
             } else {
                 "Door closed.".to_string()
@@ -245,12 +282,10 @@ impl ServerState {
             .map(|item| item.name.clone());
 
         if let Some(item_name) = item_name {
-            let inventory = self
-                .world
-                .get_component_mut::<InventoryComponent>(actor_id)?;
+            let inventory = self.world.get_component_mut::<InventoryComponent>(actor_id)?;
             inventory.items.push(item_name.clone());
-            self.world.despawn(target_id);
-            self.network_entities.remove(&target_net_id);
+            let _ = self.world.despawn(target_id);
+            let _ = self.network_entities.remove(&target_net_id);
             return Some(format!("Picked up {item_name}."));
         }
 
@@ -270,8 +305,8 @@ impl ServerState {
             .and_then(|id| self.world.get_component::<Transform>(id))
             .map(|transform| (transform.position, transform.z));
 
-        let input_state =
-            requester_id.and_then(|id| self.world.get_component::<PlayerInputComponent>(id));
+        let input_state = requester_id
+            .and_then(|id| self.world.get_component::<PlayerInputComponent>(id));
 
         let mut entities = self
             .world
@@ -286,14 +321,21 @@ impl ServerState {
                         return None;
                     }
 
-                    let distance_squared = (requester_position.x - transform.position.x).powi(2)
-                        + (requester_position.y - transform.position.y).powi(2);
-                    if distance_squared > PVS_RADIUS * PVS_RADIUS {
+                    let distance_squared =
+                        (requester_position.x - transform.position.x).powi(2)
+                            + (requester_position.y - transform.position.y).powi(2);
+                    if distance_squared > self.pvs_radius * self.pvs_radius {
                         return None;
                     }
                 }
 
                 let mut components = Vec::new();
+
+                if let Some(sprite) = entity.get::<SpriteComponent>() {
+                    components.push(ComponentSnapshot::Sprite {
+                        layers: sprite.layers.clone(),
+                    });
+                }
 
                 if let Some(player) = entity.get::<PlayerComponent>() {
                     components.push(ComponentSnapshot::Player {
@@ -340,20 +382,187 @@ impl ServerState {
         }
     }
 
+
+
+    pub fn persistence_snapshot(&self) -> PersistedWorld {
+        let mut players = self
+            .players
+            .iter()
+            .filter_map(|(_identity_id, record)| {
+                let transform = self.world.get_component::<Transform>(record.entity_id)?;
+                let inventory = self.world.get_component::<InventoryComponent>(record.entity_id)?;
+                let player = self.world.get_component::<PlayerComponent>(record.entity_id)?;
+                Some(PersistedPlayer {
+                    identity_id: player.identity_id.clone(),
+                    position: NetPosition {
+                        x: transform.position.x,
+                        y: transform.position.y,
+                        z: transform.z,
+                    },
+                    inventory: inventory.items.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        players.sort_by(|left, right| left.identity_id.cmp(&right.identity_id));
+        PersistedWorld { version: 1, players }
+    }
+
+    pub fn restore_persistence(&mut self, persisted: PersistedWorld) {
+        if persisted.version != 1 {
+            return;
+        }
+        for player in persisted.players {
+            if self.players.contains_key(&player.identity_id) {
+                continue;
+            }
+            let entity_net_id = self.allocate_net_id();
+            let entity_id = self.world.spawn();
+            self.add_base_components(
+                entity_id,
+                entity_net_id,
+                PLAYER_PROTOTYPE,
+                Vec2 { x: player.position.x, y: player.position.y },
+            );
+            if let Some(transform) = self.world.get_component_mut::<Transform>(entity_id) {
+                transform.z = player.position.z;
+            }
+            self.world
+                .add_component(entity_id, player_sprite())
+                .expect("restored player entity must exist");
+            self.world
+                .add_component(
+                    entity_id,
+                    PlayerComponent {
+                        identity_id: player.identity_id.clone(),
+                        display_name: guest_display_name(&player.identity_id),
+                        online: false,
+                    },
+                )
+                .expect("restored player entity must exist");
+            self.world
+                .add_component(entity_id, PlayerInputComponent::new())
+                .expect("restored player entity must exist");
+            self.world
+                .add_component(entity_id, ColliderComponent { radius: 0.32 })
+                .expect("restored player entity must exist");
+            self.world
+                .add_component(entity_id, InventoryComponent { items: player.inventory })
+                .expect("restored player entity must exist");
+            let _ = self.players.insert(
+                player.identity_id,
+                PlayerRecord {
+                    client_id: None,
+                    entity_id,
+                    entity_net_id,
+                },
+            );
+        }
+    }
+
+    pub fn current_tick(&self) -> u64 {
+        self.tick
+    }
+
+    pub fn take_script_events(&mut self) -> Vec<ScriptEvent> {
+        std::mem::take(&mut self.script_events)
+    }
+
+    pub fn apply_script_commands(&mut self, commands: Vec<ScriptCommand>) -> Vec<ServerMessage> {
+        let mut outgoing = Vec::new();
+        for command in commands {
+            match command {
+                ScriptCommand::Log { .. } => {}
+                ScriptCommand::EmitSystemMessage { text } => {
+                    outgoing.push(ServerMessage::System { text });
+                }
+                ScriptCommand::Spawn { prototype, x, y, z } => {
+                    if z != 0 {
+                        continue;
+                    }
+                    let Some(definition) = self.prototypes.get(&prototype).cloned() else {
+                        outgoing.push(ServerMessage::Error {
+                            message: format!("Script requested unknown prototype {prototype}"),
+                        });
+                        continue;
+                    };
+                    match definition.kind {
+                        PrototypeKind::Door => self.spawn_door_at(&prototype, Vec2 { x, y }),
+                        PrototypeKind::Item => self.spawn_item(&prototype, Vec2 { x, y }),
+                        PrototypeKind::Player | PrototypeKind::Generic => {}
+                    }
+                }
+                ScriptCommand::Delete { entity } => {
+                    if let Some(entity_id) = self.network_entities.get(&entity).copied() {
+                        if self.world.get_component::<PlayerComponent>(entity_id).is_none() {
+                            let _ = self.world.despawn(entity_id);
+                            let _ = self.network_entities.remove(&entity);
+                        }
+                    }
+                }
+                ScriptCommand::EmitEvent { name, entity, payload } => {
+                    self.script_events.push(ScriptEvent { name, entity, payload });
+                }
+                ScriptCommand::SetComponent { entity, component, state } => {
+                    let Some(entity_id) = self.network_entities.get(&entity).copied() else {
+                        continue;
+                    };
+                    if component == "Door" {
+                        if let Some(open) = state.get("open").and_then(|value| value.as_bool()) {
+                            if let Some(door) = self.world.get_component_mut::<DoorComponent>(entity_id) {
+                                door.open = open;
+                            }
+                            if let Some(sprite) = self.world.get_component_mut::<SpriteComponent>(entity_id) {
+                                *sprite = door_sprite(open);
+                            }
+                        }
+                    }
+                }
+                ScriptCommand::RemoveComponent { entity, component } => {
+                    let Some(entity_id) = self.network_entities.get(&entity).copied() else {
+                        continue;
+                    };
+                    if component == "Door" {
+                        let _ = self.world.remove_component::<DoorComponent>(entity_id);
+                    }
+                }
+                ScriptCommand::OpenUi { player: _, target, key, state } => {
+                    outgoing.push(ServerMessage::UiOpen {
+                        session_id: format!("script-{}-{target}", self.tick),
+                        key,
+                        target,
+                        state,
+                    });
+                }
+                ScriptCommand::PlaySound { path, x, y, z } => {
+                    outgoing.push(ServerMessage::PlaySound {
+                        path,
+                        position: Some(NetPosition { x, y, z }),
+                    });
+                }
+            }
+        }
+        outgoing
+    }
+
     fn spawn_door(&mut self) {
-        let prototype = self.prototypes.require(DOOR_PROTOTYPE);
-        assert!(matches!(prototype.kind, PrototypeKind::Door));
-        let net_id = self.allocate_net_id();
-        let entity_id = self.world.spawn();
-        self.add_base_components(
-            entity_id,
-            net_id,
+        self.spawn_door_at(
             DOOR_PROTOTYPE,
             Vec2 {
                 x: self.map.door_spawn.0,
                 y: self.map.door_spawn.1,
             },
         );
+    }
+
+    fn spawn_door_at(&mut self, prototype_id: &str, position: Vec2) {
+        let prototype = self.prototypes.require(prototype_id);
+        assert!(matches!(prototype.kind, PrototypeKind::Door));
+        let net_id = self.allocate_net_id();
+        let entity_id = self.world.spawn();
+        self.add_base_components(entity_id, net_id, prototype_id, position);
+        self.world
+            .add_component(entity_id, door_sprite(false))
+            .expect("door entity must exist");
         self.world
             .add_component(entity_id, DoorComponent { open: false })
             .expect("door entity must exist");
@@ -365,6 +574,9 @@ impl ServerState {
         let net_id = self.allocate_net_id();
         let entity_id = self.world.spawn();
         self.add_base_components(entity_id, net_id, prototype_id, position);
+        self.world
+            .add_component(entity_id, wrench_sprite())
+            .expect("item entity must exist");
         self.world
             .add_component(
                 entity_id,
@@ -391,7 +603,7 @@ impl ServerState {
         self.world
             .add_component(entity_id, Transform::new(self.map.id.clone(), position, 0))
             .expect("entity must exist");
-        self.network_entities.insert(net_id, entity_id);
+        let _ = self.network_entities.insert(net_id, entity_id);
     }
 
     fn allocate_net_id(&mut self) -> EntityNetId {
@@ -401,6 +613,63 @@ impl ServerState {
             .checked_add(1)
             .expect("network entity id space exhausted");
         net_id
+    }
+}
+
+
+fn player_sprite() -> SpriteComponent {
+    SpriteComponent {
+        layers: vec![SpriteLayerSnapshot {
+            key: "body".to_owned(),
+            source: SpriteSourceSnapshot::Rsi {
+                path: "/Resources/Textures/Mobs/debug_player.rsi".to_owned(),
+                state: "idle".to_owned(),
+            },
+            visible: true,
+            color: [255, 255, 255, 255],
+            scale: [1.0, 1.0],
+            offset: [0.0, 0.0],
+            rotation: 0.0,
+            z_index: 10,
+            direction: 0,
+        }],
+    }
+}
+
+fn door_sprite(open: bool) -> SpriteComponent {
+    SpriteComponent {
+        layers: vec![SpriteLayerSnapshot {
+            key: "base".to_owned(),
+            source: SpriteSourceSnapshot::Rsi {
+                path: "/Resources/Textures/Structures/debug_door.rsi".to_owned(),
+                state: if open { "open" } else { "closed" }.to_owned(),
+            },
+            visible: true,
+            color: [255, 255, 255, 255],
+            scale: [1.0, 1.0],
+            offset: [0.0, 0.0],
+            rotation: 0.0,
+            z_index: 5,
+            direction: 0,
+        }],
+    }
+}
+
+fn wrench_sprite() -> SpriteComponent {
+    SpriteComponent {
+        layers: vec![SpriteLayerSnapshot {
+            key: "icon".to_owned(),
+            source: SpriteSourceSnapshot::Texture {
+                path: "/Resources/Textures/Items/debug_wrench.png".to_owned(),
+            },
+            visible: true,
+            color: [255, 255, 255, 255],
+            scale: [1.0, 1.0],
+            offset: [0.0, 0.0],
+            rotation: 0.0,
+            z_index: 7,
+            direction: 0,
+        }],
     }
 }
 
@@ -459,10 +728,7 @@ mod tests {
         let ServerMessage::Snapshot { entities, .. } = state.snapshot_for(player) else {
             panic!("expected snapshot");
         };
-        let snapshot = entities
-            .iter()
-            .find(|entity| entity.net_id == player)
-            .unwrap();
+        let snapshot = entities.iter().find(|entity| entity.net_id == player).unwrap();
         assert!(snapshot.position.x > 2.5);
     }
 }

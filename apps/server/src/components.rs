@@ -58,3 +58,8 @@ pub struct ItemComponent {
 pub struct InventoryComponent {
     pub items: Vec<String>,
 }
+
+#[derive(Debug, Clone)]
+pub struct SpriteComponent {
+    pub layers: Vec<honknet_protocol::SpriteLayerSnapshot>,
+}

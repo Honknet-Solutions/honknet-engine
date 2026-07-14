@@ -1,19 +1,27 @@
-use std::{net::SocketAddr, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, time::Duration};
 
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use honknet_protocol::{ClientMessage, EntityNetId, PlayerIdentityId, ServerMessage};
+use honknet_protocol::{
+    ClientMessage, EntityNetId, EntitySnapshot, PlayerIdentityId, ServerMessage, PROTOCOL_VERSION,
+};
 use tokio::{net::TcpStream, sync::broadcast, time};
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::{app_state::AppState, server_state::InputUpdateResult};
+use crate::{
+    app_state::AppState,
+    server_state::InputUpdateResult,
+};
 
-const SNAPSHOT_INTERVAL: Duration = Duration::from_millis(50);
 const MAX_CHAT_LENGTH: usize = 500;
 
-pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: AppState) -> Result<()> {
+pub async fn run(
+    stream: TcpStream,
+    peer_addr: SocketAddr,
+    state: AppState,
+) -> Result<()> {
     info!(%peer_addr, "Client connected");
 
     let websocket = accept_async(stream)
@@ -23,8 +31,14 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: AppState) -> R
     let client_id = Uuid::new_v4();
     let mut identity_id: Option<PlayerIdentityId> = None;
     let mut player_net_id: Option<EntityNetId> = None;
-    let mut snapshot_interval = time::interval(SNAPSHOT_INTERVAL);
+    let snapshot_interval_ms = std::env::var("HONKNET_SNAPSHOT_INTERVAL_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(50);
+    let mut snapshot_interval = time::interval(Duration::from_millis(snapshot_interval_ms));
     let mut event_receiver = state.events.subscribe();
+    let mut snapshot_tracker = SnapshotTracker::default();
 
     let result: Result<()> = async {
         loop {
@@ -52,6 +66,7 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: AppState) -> R
                                 client_id,
                                 &mut identity_id,
                                 &mut player_net_id,
+                                &mut snapshot_tracker,
                                 client_message,
                             ).await?;
                         }
@@ -69,6 +84,7 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: AppState) -> R
                         let game = state.game.read().await;
                         game.snapshot_for(player_net_id.expect("guarded player id"))
                     };
+                    let snapshot = snapshot_tracker.encode(snapshot)?;
                     send(&mut sender, &snapshot).await?;
                 }
 
@@ -104,21 +120,21 @@ async fn handle_client_message(
     client_id: Uuid,
     identity_id: &mut Option<PlayerIdentityId>,
     player_net_id: &mut Option<EntityNetId>,
+    snapshot_tracker: &mut SnapshotTracker,
     message: ClientMessage,
 ) -> Result<()> {
     match message {
-        ClientMessage::Hello {
-            client_version,
-            identity_id: requested_identity,
-        } => {
+        ClientMessage::Hello { protocol_version, client_version, identity_id: requested_identity } => {
+            if protocol_version != PROTOCOL_VERSION {
+                send(sender, &ServerMessage::Error {
+                    message: format!("Protocol mismatch: server={PROTOCOL_VERSION}, client={protocol_version}"),
+                }).await?;
+                return Ok(());
+            }
             if identity_id.is_some() {
-                send(
-                    sender,
-                    &ServerMessage::Error {
-                        message: "Hello was already accepted".to_string(),
-                    },
-                )
-                .await?;
+                send(sender, &ServerMessage::Error {
+                    message: "Hello was already accepted".to_string(),
+                }).await?;
                 return Ok(());
             }
 
@@ -135,66 +151,54 @@ async fn handle_client_message(
             *identity_id = Some(requested_identity);
             *player_net_id = Some(entity_net_id);
 
-            send(
-                sender,
-                &ServerMessage::Welcome {
-                    client_id,
-                    entity_net_id,
-                    map,
-                },
-            )
-            .await?;
+            send(sender, &ServerMessage::Welcome {
+                protocol_version: PROTOCOL_VERSION,
+                client_id,
+                entity_net_id,
+                map,
+            }).await?;
+            let snapshot = snapshot_tracker.encode(snapshot)?;
             send(sender, &snapshot).await?;
         }
 
-        ClientMessage::Input {
-            seq,
-            client_tick,
-            movement,
-        } => {
+        ClientMessage::Input { seq, client_tick, movement } => {
             let Some(entity_net_id) = *player_net_id else {
-                send(
-                    sender,
-                    &ServerMessage::Error {
-                        message: "Input rejected before handshake".to_string(),
-                    },
-                )
-                .await?;
+                send(sender, &ServerMessage::Error {
+                    message: "Input rejected before handshake".to_string(),
+                }).await?;
                 return Ok(());
             };
 
-            match state.game.write().await.set_movement_input(
-                entity_net_id,
-                seq,
-                client_tick,
-                movement,
-            ) {
+            match state
+                .game
+                .write()
+                .await
+                .set_movement_input(entity_net_id, seq, client_tick, movement)
+            {
                 InputUpdateResult::Accepted | InputUpdateResult::Stale => {}
                 InputUpdateResult::EntityMissing => {
-                    send(
-                        sender,
-                        &ServerMessage::Error {
-                            message: "Player entity is missing".to_string(),
-                        },
-                    )
-                    .await?;
+                    send(sender, &ServerMessage::Error {
+                        message: "Player entity is missing".to_string(),
+                    }).await?;
                 }
             }
         }
 
         ClientMessage::Interact { target } => {
-            let Some(entity_net_id) = *player_net_id else {
-                return Ok(());
-            };
+            let Some(entity_net_id) = *player_net_id else { return Ok(()); };
             if let Some(text) = state.game.write().await.interact(entity_net_id, target) {
                 send(sender, &ServerMessage::System { text }).await?;
             }
         }
 
+        ClientMessage::SnapshotAck { .. } => {}
+
+        ClientMessage::UiAction { .. } => {
+            // UI actions are intentionally ignored until a game module registers the session.
+        }
+
         ClientMessage::Chat { text } => {
-            let Some(entity_net_id) = *player_net_id else {
-                return Ok(());
-            };
+            let Some(entity_net_id) = *player_net_id else { return Ok(()); };
             let text = text.trim();
             if text.is_empty() {
                 return Ok(());
@@ -215,6 +219,75 @@ async fn handle_client_message(
     Ok(())
 }
 
+
+#[derive(Default)]
+struct SnapshotTracker {
+    initialized: bool,
+    hashes: HashMap<EntityNetId, String>,
+}
+
+impl SnapshotTracker {
+    fn encode(&mut self, message: ServerMessage) -> Result<ServerMessage> {
+        let ServerMessage::Snapshot {
+            tick,
+            last_processed_input_seq,
+            last_processed_client_tick,
+            entities,
+        } = message else {
+            return Ok(message);
+        };
+
+        let mut next_hashes = HashMap::with_capacity(entities.len());
+        if !self.initialized {
+            for entity in &entities {
+                let _ = next_hashes.insert(entity.net_id, snapshot_hash(entity)?);
+            }
+            self.hashes = next_hashes;
+            self.initialized = true;
+            return Ok(ServerMessage::Snapshot {
+                tick,
+                last_processed_input_seq,
+                last_processed_client_tick,
+                entities,
+            });
+        }
+
+        let mut spawns = Vec::new();
+        let mut updates = Vec::new();
+        for entity in entities {
+            let hash = snapshot_hash(&entity)?;
+            match self.hashes.get(&entity.net_id) {
+                None => spawns.push(entity.clone()),
+                Some(previous) if previous != &hash => updates.push(entity.clone()),
+                Some(_) => {}
+            }
+            let _ = next_hashes.insert(entity.net_id, hash);
+        }
+
+        let mut despawns = self
+            .hashes
+            .keys()
+            .filter(|net_id| !next_hashes.contains_key(net_id))
+            .copied()
+            .collect::<Vec<_>>();
+        despawns.sort_unstable();
+        self.hashes = next_hashes;
+
+        Ok(ServerMessage::StateDelta {
+            tick,
+            last_processed_input_seq,
+            last_processed_client_tick,
+            spawns,
+            updates,
+            despawns,
+        })
+    }
+}
+
+fn snapshot_hash(snapshot: &EntitySnapshot) -> Result<String> {
+    serde_json::to_string(snapshot).context("failed to hash entity snapshot")
+}
+
 async fn send(
     sender: &mut futures_util::stream::SplitSink<
         tokio_tungstenite::WebSocketStream<TcpStream>,
@@ -222,7 +295,8 @@ async fn send(
     >,
     message: &ServerMessage,
 ) -> Result<()> {
-    let text = serde_json::to_string(message).context("failed to serialize server message")?;
+    let text = serde_json::to_string(message)
+        .context("failed to serialize server message")?;
     sender.send(Message::Text(text)).await?;
     Ok(())
 }

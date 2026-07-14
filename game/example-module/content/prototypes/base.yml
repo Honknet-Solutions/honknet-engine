@@ -1,0 +1,20 @@
+- type: entity
+  id: BaseEntity
+  abstract: true
+  components:
+    - type: Transform
+    - type: NetworkIdentity
+
+- type: entity
+  id: BaseCharacter
+  parent: BaseEntity
+  abstract: true
+  components:
+    - type: PhysicsBody
+      bodyType: Kinematic
+    - type: Collider
+      shapes:
+        - type: Circle
+          radius: 0.32
+    - type: Inventory
+      capacity: 24

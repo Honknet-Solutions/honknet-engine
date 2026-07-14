@@ -1,11 +1,9 @@
 # Contributing
 
-Space Station 15 is developed by Honknet Solutions.
+Перед pull request выполните:
 
-Early development rules:
+```bash
+./verify.sh
+```
 
-- Keep core setting-agnostic.
-- Do not add space-station-specific mechanics into core crates.
-- Prefer explicit data formats over hidden engine behavior.
-- Server authority is mandatory for gameplay state.
-- Client code may predict and render, but not decide gameplay results.
+Игровой контент размещается в отдельном game module. Rust-код добавляется только для engine hot paths и native infrastructure. Builder-файлы должны оставаться человекочитаемыми YAML/FTL и не генерировать исходный Rust/TypeScript.
