@@ -77,7 +77,7 @@ export class SchemaEditor extends ModelEditor<SchemaModel> {
       );
       row.addEventListener('click', () => {
         this.selectedFieldIndex = index;
-        this.renderDesigner();
+        this.render();
       });
       table.append(row);
     }
@@ -165,7 +165,7 @@ export class SchemaEditor extends ModelEditor<SchemaModel> {
     while (this.model.fields.some((schemaField) => schemaField.name === name)) name = `newField${index++}`;
     this.commit((model) => model.fields.push({ name, type: 'float', defaultValue: 0, required: false }));
     this.selectedFieldIndex = this.model.fields.length - 1;
-    this.renderDesigner();
+    this.render();
   }
 
   private deleteField(): void {
@@ -173,7 +173,7 @@ export class SchemaEditor extends ModelEditor<SchemaModel> {
     if (index === null) return;
     this.commit((model) => model.fields.splice(index, 1));
     this.selectedFieldIndex = null;
-    this.renderDesigner();
+    this.render();
   }
 
   private updateField(mutator: (field: SchemaField) => void): void {

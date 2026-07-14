@@ -41,7 +41,7 @@ export class LocalizationEditor extends ModelEditor<LocalizationModel> {
     search.value = this.search;
     search.addEventListener('input', () => {
       this.search = search.value;
-      this.renderDesigner();
+      this.render();
     });
     toolbar.append(
       element('span', { className: 'toolbar-title', text: 'Localization Editor' }),
@@ -60,7 +60,7 @@ export class LocalizationEditor extends ModelEditor<LocalizationModel> {
       row.append(element('code', { text: entry.key }), element('span', { text: entry.value }));
       row.addEventListener('click', () => {
         this.selectedIndex = index;
-        this.renderDesigner();
+        this.render();
       });
       table.append(row);
     }
@@ -124,7 +124,7 @@ export class LocalizationEditor extends ModelEditor<LocalizationModel> {
     while (this.model.entries.some((entry) => entry.key === key)) key = `new-key-${index++}`;
     this.commit((model) => model.entries.push({ key, value: 'New text', comment: '' }));
     this.selectedIndex = this.model.entries.length - 1;
-    this.renderDesigner();
+    this.render();
   }
 
   private deleteEntry(): void {
@@ -132,7 +132,7 @@ export class LocalizationEditor extends ModelEditor<LocalizationModel> {
     if (index === null) return;
     this.commit((model) => model.entries.splice(index, 1));
     this.selectedIndex = null;
-    this.renderDesigner();
+    this.render();
   }
 
   private updateEntry(mutator: (entry: LocalizationEntry) => void, render = true): void {

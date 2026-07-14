@@ -163,7 +163,7 @@ export class PrototypeEditor extends ModelEditor<PrototypeDocument> {
         const item = button('', () => {
           this.selectedPrototypeIndex = index;
           this.selectedComponentIndex = null;
-          this.renderDesigner();
+          this.render();
         }, `prototype-list-item ${index === this.selectedPrototypeIndex ? 'selected' : ''}`);
         item.append(
           element('strong', { text: prototype.id }),
@@ -187,7 +187,7 @@ export class PrototypeEditor extends ModelEditor<PrototypeDocument> {
     for (const [index, component] of this.selectedPrototype.components.entries()) {
       const item = button('', () => {
         this.selectedComponentIndex = index;
-        this.renderDesigner();
+        this.render();
       }, `component-card ${index === this.selectedComponentIndex ? 'selected' : ''}`);
       item.append(
         element('span', { className: 'component-icon', text: component.type.slice(0, 2).toUpperCase() }),
@@ -272,7 +272,7 @@ export class PrototypeEditor extends ModelEditor<PrototypeDocument> {
       if (index === null) return;
       this.commit((model) => model.prototypes[this.selectedPrototypeIndex]?.components.splice(index, 1));
       this.selectedComponentIndex = null;
-      this.renderDesigner();
+      this.render();
     }, 'danger-button'));
   }
 
@@ -386,7 +386,7 @@ export class PrototypeEditor extends ModelEditor<PrototypeDocument> {
     }
     this.commit((model) => model.prototypes[this.selectedPrototypeIndex]?.components.push({ type, fields }));
     this.selectedComponentIndex = this.selectedPrototype.components.length - 1;
-    this.renderDesigner();
+    this.render();
   }
 
   private addPrototype(): void {
@@ -395,7 +395,7 @@ export class PrototypeEditor extends ModelEditor<PrototypeDocument> {
     this.commit((model) => model.prototypes.push(createEmptyPrototype(sanitizeId(id, 'NewEntity'))));
     this.selectedPrototypeIndex = this.model.prototypes.length - 1;
     this.selectedComponentIndex = null;
-    this.renderDesigner();
+    this.render();
   }
 
   private duplicatePrototype(): void {
@@ -407,7 +407,7 @@ export class PrototypeEditor extends ModelEditor<PrototypeDocument> {
     this.commit((model) => model.prototypes.push(clone));
     this.selectedPrototypeIndex = this.model.prototypes.length - 1;
     this.selectedComponentIndex = null;
-    this.renderDesigner();
+    this.render();
   }
 
   private deletePrototype(): void {
@@ -417,7 +417,7 @@ export class PrototypeEditor extends ModelEditor<PrototypeDocument> {
     this.commit((model) => model.prototypes.splice(this.selectedPrototypeIndex, 1));
     this.selectedPrototypeIndex = Math.max(0, this.selectedPrototypeIndex - 1);
     this.selectedComponentIndex = null;
-    this.renderDesigner();
+    this.render();
   }
 
   private updatePrototype(mutator: (prototype: PrototypeModel) => void): void {

@@ -124,14 +124,14 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
       element('span', { className: 'toolbar-title', text: 'Behavior Graph' }),
       field('Event', selectInput(this.selection.event, Object.keys(this.model.events), (value) => {
         this.selection = { event: value, nodeId: null, branch: 'root' };
-        this.renderDesigner();
+        this.render();
       })),
       button('+ Event', () => this.addEvent(), 'tool-button'),
       element('span', { className: 'toolbar-spacer' }),
-      button('−', () => { this.zoom = Math.max(0.5, this.zoom / 1.15); this.renderDesigner(); }, 'icon-button'),
+      button('−', () => { this.zoom = Math.max(0.5, this.zoom / 1.15); this.render(); }, 'icon-button'),
       element('span', { className: 'zoom-label', text: `${Math.round(this.zoom * 100)}%` }),
-      button('+', () => { this.zoom = Math.min(2, this.zoom * 1.15); this.renderDesigner(); }, 'icon-button'),
-      button('Auto layout', () => { this.nodePositions.clear(); this.renderDesigner(); }, 'tool-button'),
+      button('+', () => { this.zoom = Math.min(2, this.zoom * 1.15); this.render(); }, 'icon-button'),
+      button('Auto layout', () => { this.nodePositions.clear(); this.render(); }, 'tool-button'),
     );
 
     const body = element('div', { className: 'behavior-editor-body' });
@@ -219,7 +219,7 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
     eventCard.append(element('strong', { text: eventName }), element('small', { text: 'Event' }));
     eventCard.addEventListener('click', () => {
       this.selection = { event: eventName, nodeId: null, branch: 'root' };
-      this.renderDesigner();
+      this.render();
     });
     graph.append(eventCard);
 
@@ -278,7 +278,7 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
     card.addEventListener('click', (event) => {
       event.stopPropagation();
       this.selection = { event: this.selection.event, nodeId: node._editorId, branch: defaultBranch(node) };
-      this.renderDesigner();
+      this.render();
     });
 
     let dragging = false;
@@ -349,7 +349,7 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
         field('Behavior ID', textInput(this.model.id, (value) => this.commit((model) => { model.id = value; }))),
         field('Selected event', selectInput(this.selection.event, Object.keys(this.model.events), (value) => {
           this.selection = { event: value, nodeId: null, branch: 'root' };
-          this.renderDesigner();
+          this.render();
         })),
         button('Delete event', () => this.deleteEvent(), 'danger-button'),
       );
@@ -416,7 +416,7 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
     if (!eventName) return;
     this.commit((model) => { model.events[eventName] = []; });
     this.selection = { event: eventName, nodeId: null, branch: 'root' };
-    this.renderDesigner();
+    this.render();
   }
 
   private deleteEvent(): void {
@@ -424,7 +424,7 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
     if (!window.confirm(`Delete event ${this.selection.event}?`)) return;
     this.commit((model) => { delete model.events[this.selection.event]; });
     this.selection = { event: Object.keys(this.model.events)[0] ?? 'OnInteract', nodeId: null, branch: 'root' };
-    this.renderDesigner();
+    this.render();
   }
 
   private addNode(type: string): void {
@@ -450,7 +450,7 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
       parent[this.selection.branch] = branch;
     });
     this.selection = { event: this.selection.event, nodeId: newNode._editorId, branch: defaultBranch(newNode) };
-    this.renderDesigner();
+    this.render();
   }
 
   private deleteSelectedNode(): void {
@@ -462,7 +462,7 @@ export class BehaviorEditor extends ModelEditor<BehaviorModel> {
     });
     this.nodePositions.delete(id);
     this.selection = { event: this.selection.event, nodeId: null, branch: 'root' };
-    this.renderDesigner();
+    this.render();
   }
 
   private updateSelectedNode(mutator: (node: BehaviorNode) => void): void {

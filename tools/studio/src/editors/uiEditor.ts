@@ -121,7 +121,7 @@ export class UiEditor extends ModelEditor<UiModel> {
         if (width && height) {
           this.previewWidth = width;
           this.previewHeight = height;
-          this.renderDesigner();
+          this.render();
         }
       }),
       button('Add child', () => this.addNode('Column'), 'tool-button'),
@@ -226,7 +226,7 @@ export class UiEditor extends ModelEditor<UiModel> {
     wrapper.addEventListener('click', (event) => {
       event.stopPropagation();
       this.selectedId = node._editorId;
-      this.renderDesigner();
+      this.render();
     });
     wrapper.addEventListener('dragover', (event) => {
       if (CONTAINER_TYPES.has(node.type)) {
@@ -328,7 +328,7 @@ export class UiEditor extends ModelEditor<UiModel> {
     search.value = this.hierarchyFilter;
     search.addEventListener('input', () => {
       this.hierarchyFilter = search.value;
-      this.renderDesigner();
+      this.render();
     });
     panel.append(search);
     const tree = element('div', { className: 'hierarchy-tree' });
@@ -353,7 +353,7 @@ export class UiEditor extends ModelEditor<UiModel> {
     row.draggable = node !== this.model.root;
     row.addEventListener('click', () => {
       this.selectedId = node._editorId;
-      this.renderDesigner();
+      this.render();
     });
     row.addEventListener('dragstart', (event) => {
       event.dataTransfer?.setData('application/x-honknet-ui-existing', node._editorId);
@@ -476,7 +476,7 @@ export class UiEditor extends ModelEditor<UiModel> {
       modelTarget.children.push(node);
     });
     this.selectedId = node._editorId;
-    this.renderDesigner();
+    this.render();
   }
 
   private deleteSelected(): void {
@@ -490,7 +490,7 @@ export class UiEditor extends ModelEditor<UiModel> {
       modelParent?.children?.splice(index, 1);
     });
     this.selectedId = parent._editorId;
-    this.renderDesigner();
+    this.render();
   }
 
   private moveNode(nodeId: string, parentId: string): void {

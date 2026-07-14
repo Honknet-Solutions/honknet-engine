@@ -57,7 +57,30 @@ export function textInput(value: string, onChange: (value: string) => void): HTM
   const input = element('input');
   input.type = 'text';
   input.value = value;
-  input.addEventListener('input', () => onChange(input.value));
+
+  let committedValue = value;
+
+  const commitValue = (): void => {
+    if (input.value === committedValue) return;
+    committedValue = input.value;
+    onChange(input.value);
+  };
+
+  // Inspector callbacks often rebuild the editor. Committing on every keystroke
+  // would remove the focused input after the first character. Keep the browser's
+  // native editing session alive and commit when the field is finished instead.
+  input.addEventListener('change', commitValue);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      input.value = committedValue;
+      input.blur();
+    }
+  });
+
   return input;
 }
 
@@ -72,10 +95,28 @@ export function numberInput(
   if (options.min !== undefined) input.min = String(options.min);
   if (options.max !== undefined) input.max = String(options.max);
   if (options.step !== undefined) input.step = String(options.step);
-  input.addEventListener('input', () => {
+
+  let committedValue = value;
+
+  const commitValue = (): void => {
     const parsed = Number(input.value);
-    if (Number.isFinite(parsed)) onChange(parsed);
+    if (!Number.isFinite(parsed) || parsed === committedValue) return;
+    committedValue = parsed;
+    onChange(parsed);
+  };
+
+  input.addEventListener('change', commitValue);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      input.blur();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      input.value = String(committedValue);
+      input.blur();
+    }
   });
+
   return input;
 }
 

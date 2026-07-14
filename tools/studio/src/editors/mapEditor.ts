@@ -92,6 +92,13 @@ export class MapEditor extends ModelEditor<MapModel> {
   protected renderDesigner(): void {
     if (!this.container || !this.inspector) return;
 
+    // A tool switch rebuilds the canvas. Never carry pointer capture state from
+    // the old canvas into the new one or the map can remain stuck in paint/pan.
+    this.isPointerDown = false;
+    this.pointerButton = 0;
+    this.rectangleStart = null;
+    this.cursorTile = null;
+
     const shell = element('div', { className: 'map-editor editor-fill' });
     const toolbar = element('div', { className: 'editor-toolbar map-toolbar' });
 
@@ -107,7 +114,7 @@ export class MapEditor extends ModelEditor<MapModel> {
     for (const entry of tools) {
       const toolButton = button(entry.label, () => {
         this.tool = entry.tool;
-        this.renderDesigner();
+        this.render();
       }, `tool-button ${this.tool === entry.tool ? 'active' : ''}`);
       toolButton.title = `${entry.label} (${entry.key})`;
       toolbar.append(toolButton);
@@ -171,11 +178,11 @@ export class MapEditor extends ModelEditor<MapModel> {
     const tabs = element('div', { className: 'palette-tabs' });
     const tileTab = button('Tiles', () => {
       this.tool = 'brush';
-      this.renderDesigner();
+      this.render();
     }, this.tool !== 'entity' ? 'active' : '');
     const entityTab = button('Entities', () => {
       this.tool = 'entity';
-      this.renderDesigner();
+      this.render();
     }, this.tool === 'entity' ? 'active' : '');
     tabs.append(tileTab, entityTab);
     palette.append(tabs);
@@ -253,7 +260,7 @@ export class MapEditor extends ModelEditor<MapModel> {
         if (index === null) return;
         this.commit((model) => model.entities.splice(index, 1));
         this.selectedEntityIndex = null;
-        this.renderDesigner();
+        this.render();
       }, 'danger-button'));
       return;
     }
@@ -360,7 +367,7 @@ export class MapEditor extends ModelEditor<MapModel> {
       const next = shortcuts[event.key.toLowerCase()];
       if (next) {
         this.tool = next;
-        this.renderDesigner();
+        this.render();
       }
     });
   }
@@ -572,7 +579,7 @@ export class MapEditor extends ModelEditor<MapModel> {
 
   private setZoom(value: number, redraw = true): void {
     this.zoom = Math.max(0.1, Math.min(6, value));
-    if (redraw) this.renderDesigner();
+    if (redraw) this.render();
   }
 
   private fitMap(): void {
@@ -582,7 +589,7 @@ export class MapEditor extends ModelEditor<MapModel> {
     this.zoom = Math.max(0.1, Math.min(4, Math.min((rect.width - 48) / (this.model.width * 32), (rect.height - 48) / (this.model.height * 32))));
     this.panX = (rect.width - this.model.width * 32 * this.zoom) / 2;
     this.panY = (rect.height - this.model.height * 32 * this.zoom) / 2;
-    this.renderDesigner();
+    this.render();
   }
 
   private screenToWorld(screenX: number, screenY: number): { x: number; y: number } {
