@@ -174,9 +174,17 @@ export class PixiRenderer {
     const cameraTarget = this.getCameraTarget();
 
     if (cameraTarget) {
-      const factor = 1 - Math.exp(-CAMERA_SPEED * delta);
-      this.cameraX += (cameraTarget.x - this.cameraX) * factor;
-      this.cameraY += (cameraTarget.y - this.cameraY) * factor;
+      if (this.state.predictedPlayerPosition) {
+        // The local player and camera must use the exact same render-space
+        // position. Interpolating the camera independently makes the player
+        // oscillate around the screen centre while moving.
+        this.cameraX = cameraTarget.x;
+        this.cameraY = cameraTarget.y;
+      } else {
+        const factor = 1 - Math.exp(-CAMERA_SPEED * delta);
+        this.cameraX += (cameraTarget.x - this.cameraX) * factor;
+        this.cameraY += (cameraTarget.y - this.cameraY) * factor;
+      }
     }
 
     for (const [netId, entity] of this.state.entities) {

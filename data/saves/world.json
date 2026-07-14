@@ -4,11 +4,12 @@
     {
       "identity_id": "guest-c894f28f-b30f-45ff-97ed-78b60be5db93",
       "position": {
-        "x": 2.6171584,
-        "y": 3.394281,
+        "x": 3.8629203,
+        "y": 2.5089898,
         "z": 0
       },
       "inventory": [
+        "debug-wrench-name",
         "debug-wrench-name"
       ]
     }

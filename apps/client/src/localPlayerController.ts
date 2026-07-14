@@ -9,11 +9,18 @@ import type {
 const TICK_RATE = 30;
 const TICK_DELTA = 1 / TICK_RATE;
 const MOVE_SPEED = 4;
-const HEARTBEAT_TICKS = 15;
-const SNAP_DISTANCE = 1.5;
-const IGNORE_DISTANCE = 0.002;
+const SNAP_DISTANCE = 0.75;
+const IGNORE_DISTANCE = 0.0025;
 const CORRECTION_SPEED = 18;
 const MAX_HISTORY = 512;
+const MAX_FRAME_DELTA = 0.25;
+const MAX_SIMULATION_STEPS_PER_FRAME = 8;
+
+type InputSample = {
+  sequence: number;
+  tick: number;
+  movement: Vec2;
+};
 
 export type LocalPlayerControllerState = {
   clientSimulationTick: number;
@@ -28,26 +35,32 @@ type Options = {
   getMovement: () => Vec2;
   isConnected: () => boolean;
   sendMessage: (message: ClientMessage) => boolean;
+  resolveMovement: (
+    position: NetPosition,
+    movement: Vec2,
+    distance: number,
+  ) => NetPosition;
   onFrame: (state: LocalPlayerControllerState) => void;
   onPredictionSnap?: (distance: number) => void;
 };
 
-type InputSample = {
-  tick: number;
-  movement: Vec2;
-};
-
+/**
+ * Handles local fixed-tick prediction and render-time smoothing.
+ *
+ * The authoritative/predicted state advances at the simulation tick rate,
+ * while the displayed position is extrapolated for the fractional part of
+ * the current tick. This keeps movement smooth on 60/120/144 Hz displays
+ * without changing the authoritative 30 Hz simulation.
+ */
 export class LocalPlayerController {
   private playerEntityNetId: EntityNetId | null = null;
   private predicted: NetPosition | null = null;
-  private rendered: NetPosition | null = null;
+  private displayed: NetPosition | null = null;
+  private visualCorrection: Vec2 = { x: 0, y: 0 };
   private clientTick = 0;
   private sequence = 0;
-  private lastSentMovement: Vec2 | null = null;
-  private lastSentTick: number | null = null;
   private lastAckSeq: number | null = null;
   private lastAckTick: number | null = null;
-  private pendingSequences: number[] = [];
   private history: InputSample[] = [];
   private accumulator = 0;
   private lastFrame = performance.now();
@@ -57,16 +70,21 @@ export class LocalPlayerController {
   public constructor(private readonly options: Options) {}
 
   public start(): void {
-    if (this.frameId !== null) return;
+    if (this.frameId !== null) {
+      return;
+    }
+
     this.lastFrame = performance.now();
     this.frameId = requestAnimationFrame(this.frame);
   }
 
   public stop(): void {
-    if (this.frameId !== null) {
-      cancelAnimationFrame(this.frameId);
-      this.frameId = null;
+    if (this.frameId === null) {
+      return;
     }
+
+    cancelAnimationFrame(this.frameId);
+    this.frameId = null;
   }
 
   public setPlayerEntity(netId: EntityNetId): void {
@@ -88,14 +106,8 @@ export class LocalPlayerController {
     this.lastAckTick = ackTick;
 
     if (ackSeq !== null) {
-      this.pendingSequences = this.pendingSequences.filter(
-        (sequence) => isSequenceNewer(sequence, ackSeq),
-      );
-    }
-
-    if (ackTick !== null) {
       this.history = this.history.filter(
-        (sample) => isSequenceNewer(sample.tick, ackTick),
+        (sample) => isSequenceNewer(sample.sequence, ackSeq),
       );
     }
 
@@ -104,11 +116,16 @@ export class LocalPlayerController {
       return;
     }
 
-    const replayed = replay(entity.position, this.history);
+    const replayed = replay(
+      entity.position,
+      this.history,
+      this.options.resolveMovement,
+    );
 
-    if (!this.predicted || !this.rendered) {
+    if (!this.predicted || !this.displayed) {
       this.predicted = { ...replayed };
-      this.rendered = { ...replayed };
+      this.displayed = { ...replayed };
+      this.visualCorrection = { x: 0, y: 0 };
       this.predictionError = 0;
       this.emit();
       return;
@@ -116,22 +133,34 @@ export class LocalPlayerController {
 
     if (this.predicted.z !== replayed.z) {
       this.predicted = { ...replayed };
-      this.rendered = { ...replayed };
+      this.displayed = { ...replayed };
+      this.visualCorrection = { x: 0, y: 0 };
       this.predictionError = 0;
       this.emit();
       return;
     }
 
-    const error = Math.hypot(
-      replayed.x - this.predicted.x,
-      replayed.y - this.predicted.y,
-    );
-    this.predictionError = error;
+    const previousPredicted = this.predicted;
+    const errorX = replayed.x - previousPredicted.x;
+    const errorY = replayed.y - previousPredicted.y;
+    const errorDistance = Math.hypot(errorX, errorY);
+
+    this.predictionError = errorDistance;
     this.predicted = replayed;
 
-    if (error >= SNAP_DISTANCE) {
-      this.rendered = { ...replayed };
-      this.options.onPredictionSnap?.(error);
+    if (errorDistance >= SNAP_DISTANCE) {
+      this.displayed = { ...replayed };
+      this.visualCorrection = { x: 0, y: 0 };
+      this.options.onPredictionSnap?.(errorDistance);
+      this.emit();
+      return;
+    }
+
+    if (errorDistance > IGNORE_DISTANCE) {
+      // Keep the current rendered position continuous. The correction offset
+      // decays smoothly instead of moving the player backwards in one frame.
+      this.visualCorrection.x += previousPredicted.x - replayed.x;
+      this.visualCorrection.y += previousPredicted.y - replayed.y;
     }
 
     this.emit();
@@ -142,103 +171,148 @@ export class LocalPlayerController {
       clientSimulationTick: this.clientTick,
       lastProcessedInputSeq: this.lastAckSeq,
       lastProcessedClientTick: this.lastAckTick,
-      predictedPlayerPosition: this.rendered ? { ...this.rendered } : null,
-      pendingInputCount: this.pendingSequences.length,
+      predictedPlayerPosition:
+        this.displayed === null
+          ? null
+          : { ...this.displayed },
+      pendingInputCount: this.history.length,
       predictionError: this.predictionError,
     };
   }
 
   private readonly frame = (now: number): void => {
-    const delta = Math.min(Math.max((now - this.lastFrame) / 1000, 0), 0.25);
+    const delta = Math.min(
+      Math.max((now - this.lastFrame) / 1000, 0),
+      MAX_FRAME_DELTA,
+    );
+
     this.lastFrame = now;
     this.accumulator += delta;
 
     let steps = 0;
-    while (this.accumulator >= TICK_DELTA && steps < 8) {
+
+    while (
+      this.accumulator >= TICK_DELTA &&
+      steps < MAX_SIMULATION_STEPS_PER_FRAME
+    ) {
       this.tick();
       this.accumulator -= TICK_DELTA;
       steps += 1;
     }
 
-    if (this.predicted && this.rendered) {
-      const errorX = this.predicted.x - this.rendered.x;
-      const errorY = this.predicted.y - this.rendered.y;
-      const distance = Math.hypot(errorX, errorY);
-      if (distance > IGNORE_DISTANCE) {
-        const factor = 1 - Math.exp(-CORRECTION_SPEED * delta);
-        this.rendered.x += errorX * factor;
-        this.rendered.y += errorY * factor;
-      } else {
-        this.rendered.x = this.predicted.x;
-        this.rendered.y = this.predicted.y;
-      }
-      this.rendered.z = this.predicted.z;
+    if (
+      steps >= MAX_SIMULATION_STEPS_PER_FRAME &&
+      this.accumulator >= TICK_DELTA
+    ) {
+      // Drop an excessive backlog after a long browser pause. Catching up
+      // hundreds of inputs would cause a large visible jump and network burst.
+      this.accumulator = 0;
     }
 
+    this.updateDisplayedPosition(delta);
     this.emit();
     this.frameId = requestAnimationFrame(this.frame);
   };
 
   private tick(): void {
     this.clientTick = (this.clientTick + 1) >>> 0;
-    const movement = normalize(this.options.getMovement());
 
+    if (
+      !this.options.isConnected() ||
+      this.playerEntityNetId === null ||
+      !this.predicted
+    ) {
+      return;
+    }
+
+    const movement = normalize(this.options.getMovement());
+    const nextSequence = (this.sequence + 1) >>> 0;
+
+    const sent = this.options.sendMessage({
+      type: 'Input',
+      data: {
+        seq: nextSequence,
+        client_tick: this.clientTick,
+        movement,
+      },
+    });
+
+    if (!sent) {
+      return;
+    }
+
+    this.sequence = nextSequence;
     this.history.push({
+      sequence: nextSequence,
       tick: this.clientTick,
       movement: { ...movement },
     });
+
     if (this.history.length > MAX_HISTORY) {
-      this.history.splice(0, this.history.length - MAX_HISTORY);
+      this.history.splice(
+        0,
+        this.history.length - MAX_HISTORY,
+      );
     }
 
-    if (this.options.isConnected() && this.playerEntityNetId !== null) {
-      const changed = !this.lastSentMovement ||
-        movement.x !== this.lastSentMovement.x ||
-        movement.y !== this.lastSentMovement.y;
-      const heartbeat = this.lastSentTick === null ||
-        ((this.clientTick - this.lastSentTick) >>> 0) >= HEARTBEAT_TICKS;
+    this.predicted = this.options.resolveMovement(
+      this.predicted,
+      movement,
+      MOVE_SPEED * TICK_DELTA,
+    );
+  }
 
-      if (changed || heartbeat) {
-        const nextSequence = (this.sequence + 1) >>> 0;
-        if (this.options.sendMessage({
-          type: 'Input',
-          data: {
-            seq: nextSequence,
-            client_tick: this.clientTick,
+  private updateDisplayedPosition(deltaSeconds: number): void {
+    if (!this.predicted) {
+      return;
+    }
+
+    const movement = normalize(this.options.getMovement());
+
+    // The fixed simulation has consumed whole ticks. Extrapolate only the
+    // remaining fraction, so the visible player advances every render frame.
+    const extrapolated =
+      this.options.isConnected() &&
+      this.playerEntityNetId !== null
+        ? this.options.resolveMovement(
+            this.predicted,
             movement,
-          },
-        })) {
-          this.sequence = nextSequence;
-          this.lastSentMovement = { ...movement };
-          this.lastSentTick = this.clientTick;
-          this.pendingSequences.push(nextSequence);
-        }
-      }
+            MOVE_SPEED * this.accumulator,
+          )
+        : this.predicted;
+
+    const decay = Math.exp(-CORRECTION_SPEED * deltaSeconds);
+    this.visualCorrection.x *= decay;
+    this.visualCorrection.y *= decay;
+
+    if (
+      Math.hypot(
+        this.visualCorrection.x,
+        this.visualCorrection.y,
+      ) <= IGNORE_DISTANCE
+    ) {
+      this.visualCorrection = { x: 0, y: 0 };
     }
 
-    if (this.predicted && this.rendered) {
-      const dx = movement.x * MOVE_SPEED * TICK_DELTA;
-      const dy = movement.y * MOVE_SPEED * TICK_DELTA;
-      this.predicted.x += dx;
-      this.predicted.y += dy;
-      this.rendered.x += dx;
-      this.rendered.y += dy;
-    }
+    this.displayed = {
+      x: extrapolated.x + this.visualCorrection.x,
+      y: extrapolated.y + this.visualCorrection.y,
+      z: extrapolated.z,
+    };
   }
 
   private reset(): void {
     this.predicted = null;
-    this.rendered = null;
+    this.displayed = null;
+    this.visualCorrection = { x: 0, y: 0 };
     this.clientTick = 0;
     this.sequence = 0;
-    this.lastSentMovement = null;
-    this.lastSentTick = null;
     this.lastAckSeq = null;
     this.lastAckTick = null;
-    this.pendingSequences = [];
     this.history = [];
     this.accumulator = 0;
     this.predictionError = 0;
+    this.lastFrame = performance.now();
     this.emit();
   }
 
@@ -247,22 +321,48 @@ export class LocalPlayerController {
   }
 }
 
-function replay(authoritative: NetPosition, samples: readonly InputSample[]): NetPosition {
-  const result = { ...authoritative };
+function replay(
+  authoritative: NetPosition,
+  samples: readonly InputSample[],
+  resolveMovement: Options['resolveMovement'],
+): NetPosition {
+  let result = { ...authoritative };
+
   for (const sample of samples) {
-    result.x += sample.movement.x * MOVE_SPEED * TICK_DELTA;
-    result.y += sample.movement.y * MOVE_SPEED * TICK_DELTA;
+    result = resolveMovement(
+      result,
+      sample.movement,
+      MOVE_SPEED * TICK_DELTA,
+    );
   }
+
   return result;
 }
 
 function normalize(movement: Vec2): Vec2 {
+  if (
+    !Number.isFinite(movement.x) ||
+    !Number.isFinite(movement.y)
+  ) {
+    return { x: 0, y: 0 };
+  }
+
   const length = Math.hypot(movement.x, movement.y);
-  if (length <= 1 || length === 0) return movement;
-  return { x: movement.x / length, y: movement.y / length };
+
+  if (length <= 1 || length === 0) {
+    return movement;
+  }
+
+  return {
+    x: movement.x / length,
+    y: movement.y / length,
+  };
 }
 
-function isSequenceNewer(candidate: number, current: number): boolean {
+function isSequenceNewer(
+  candidate: number,
+  current: number,
+): boolean {
   const difference = (candidate - current) >>> 0;
   return difference !== 0 && difference < 0x80000000;
 }

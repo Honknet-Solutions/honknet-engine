@@ -16,7 +16,9 @@ import {
   PROTOCOL_VERSION,
   type EntityNetId,
   type MapSnapshot,
+  type NetPosition,
   type ServerMessage,
+  type Vec2,
 } from './protocol';
 import { TransformInterpolationSystem } from './systems/transformInterpolationSystem';
 
@@ -124,6 +126,7 @@ async function bootstrap(): Promise<void> {
     getMovement: () => input.getMovement(),
     isConnected: () => connection.isConnected,
     sendMessage: (message) => connection.send(message),
+    resolveMovement: resolveLocalMovement,
     onFrame: (state) => {
       localState = state;
       renderState();
@@ -258,6 +261,152 @@ async function bootstrap(): Promise<void> {
       }
     }
     renderState();
+  }
+
+  function resolveLocalMovement(
+    position: NetPosition,
+    movement: Vec2,
+    distance: number,
+  ): NetPosition {
+    const radius = 0.32;
+    let nextX = position.x;
+    let nextY = position.y;
+
+    const candidateX =
+      nextX + movement.x * distance;
+
+    if (
+      !isLocalPositionBlocked(
+        candidateX,
+        nextY,
+        position.z,
+        radius,
+      )
+    ) {
+      nextX = candidateX;
+    }
+
+    const candidateY =
+      nextY + movement.y * distance;
+
+    if (
+      !isLocalPositionBlocked(
+        nextX,
+        candidateY,
+        position.z,
+        radius,
+      )
+    ) {
+      nextY = candidateY;
+    }
+
+    return {
+      x: nextX,
+      y: nextY,
+      z: position.z,
+    };
+  }
+
+  function isLocalPositionBlocked(
+    x: number,
+    y: number,
+    z: number,
+    radius: number,
+  ): boolean {
+    if (mapCircleCollides(x, y, radius)) {
+      return true;
+    }
+
+    for (const [netId, entity] of world.getEntities()) {
+      if (
+        netId === playerEntityNetId ||
+        !entity.door ||
+        entity.door.open ||
+        entity.position.z !== z
+      ) {
+        continue;
+      }
+
+      const nearestX = Math.max(
+        entity.position.x - 0.45,
+        Math.min(x, entity.position.x + 0.45),
+      );
+      const nearestY = Math.max(
+        entity.position.y - 0.45,
+        Math.min(y, entity.position.y + 0.45),
+      );
+      const deltaX = x - nearestX;
+      const deltaY = y - nearestY;
+
+      if (
+        deltaX * deltaX + deltaY * deltaY <
+        radius * radius
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function mapCircleCollides(
+    x: number,
+    y: number,
+    radius: number,
+  ): boolean {
+    if (!map) {
+      return false;
+    }
+
+    const minX = Math.floor(x - radius);
+    const maxX = Math.floor(x + radius);
+    const minY = Math.floor(y - radius);
+    const maxY = Math.floor(y + radius);
+
+    for (let tileY = minY; tileY <= maxY; tileY += 1) {
+      for (let tileX = minX; tileX <= maxX; tileX += 1) {
+        if (!isWallTile(tileX, tileY)) {
+          continue;
+        }
+
+        const nearestX = Math.max(
+          tileX,
+          Math.min(x, tileX + 1),
+        );
+        const nearestY = Math.max(
+          tileY,
+          Math.min(y, tileY + 1),
+        );
+        const deltaX = x - nearestX;
+        const deltaY = y - nearestY;
+
+        if (
+          deltaX * deltaX + deltaY * deltaY <
+          radius * radius
+        ) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function isWallTile(x: number, y: number): boolean {
+    if (!map) {
+      return false;
+    }
+
+    if (
+      x < 0 ||
+      y < 0 ||
+      x >= map.width ||
+      y >= map.height
+    ) {
+      return true;
+    }
+
+    return map.tiles[y * map.width + x] === 1;
   }
 
   function interactWithNearest(): void {

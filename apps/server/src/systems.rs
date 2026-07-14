@@ -65,10 +65,15 @@ impl System for MovementSystem {
         let ids = world.entity_ids().collect::<Vec<_>>();
 
         for entity_id in ids {
-            let Some(movement) = world
-                .get_component::<PlayerInputComponent>(entity_id)
-                .map(|input| input.movement)
-            else {
+            let command = {
+                let Some(input) = world.get_component_mut::<PlayerInputComponent>(entity_id) else {
+                    continue;
+                };
+
+                input.pop_next()
+            };
+
+            let Some(command) = command else {
                 continue;
             };
 
@@ -90,7 +95,7 @@ impl System for MovementSystem {
             let mut next_x = position.0;
             let mut next_y = position.1;
 
-            let candidate_x = next_x + movement.x * distance;
+            let candidate_x = next_x + command.movement.x * distance;
             if !is_blocked(
                 world,
                 &self.map,
@@ -103,7 +108,7 @@ impl System for MovementSystem {
                 next_x = candidate_x;
             }
 
-            let candidate_y = next_y + movement.y * distance;
+            let candidate_y = next_y + command.movement.y * distance;
             if !is_blocked(
                 world,
                 &self.map,

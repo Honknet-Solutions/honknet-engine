@@ -18,7 +18,7 @@ use serde_json::json;
 use crate::{
     components::{
         ColliderComponent, DoorComponent, InventoryComponent, ItemComponent, PlayerComponent,
-        PlayerInputComponent, SpriteComponent,
+        PlayerInputCommand, PlayerInputComponent, SpriteComponent,
     },
     game_map::GameMap,
     prototypes::{PrototypeCatalog, PrototypeKind},
@@ -244,16 +244,20 @@ impl ServerState {
             return InputUpdateResult::EntityMissing;
         };
 
-        if let Some(last_sequence) = input.last_sequence {
+        if let Some(last_sequence) = input.last_received_sequence {
             if !is_sequence_newer(sequence, last_sequence) {
                 return InputUpdateResult::Stale;
             }
         }
 
-        input.last_sequence = Some(sequence);
-        input.last_client_tick = Some(client_tick);
-        input.movement = sanitize_movement(movement);
+        input.last_received_sequence = Some(sequence);
         input.last_received_at = Some(Instant::now());
+        input.enqueue(PlayerInputCommand {
+            sequence,
+            client_tick,
+            movement: sanitize_movement(movement),
+        });
+
         InputUpdateResult::Accepted
     }
 
@@ -398,8 +402,9 @@ impl ServerState {
 
         ServerMessage::Snapshot {
             tick: self.tick,
-            last_processed_input_seq: input_state.and_then(|input| input.last_sequence),
-            last_processed_client_tick: input_state.and_then(|input| input.last_client_tick),
+            last_processed_input_seq: input_state.and_then(|input| input.last_processed_sequence),
+            last_processed_client_tick: input_state
+                .and_then(|input| input.last_processed_client_tick),
             entities,
         }
     }
@@ -410,31 +415,24 @@ impl ServerState {
             .values()
             .filter_map(|record| {
                 let transform = self.world.get_component::<Transform>(record.entity_id)?;
-
                 let inventory = self
                     .world
                     .get_component::<InventoryComponent>(record.entity_id)?;
-
                 let player = self
                     .world
                     .get_component::<PlayerComponent>(record.entity_id)?;
-
                 Some(PersistedPlayer {
                     identity_id: player.identity_id.clone(),
-
                     position: NetPosition {
                         x: transform.position.x,
                         y: transform.position.y,
                         z: transform.z,
                     },
-
                     inventory: inventory.items.clone(),
                 })
             })
             .collect::<Vec<_>>();
-
         players.sort_by(|left, right| left.identity_id.cmp(&right.identity_id));
-
         PersistedWorld {
             version: 1,
             players,
