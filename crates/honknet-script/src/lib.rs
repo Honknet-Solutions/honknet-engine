@@ -62,20 +62,33 @@ pub struct ScriptEntitySnapshot {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ScriptToEngine {
-    Ready { module_id: String },
+    Ready {
+        module_id: String,
+    },
     TickResult {
         tick: u64,
         commands: Vec<ScriptCommand>,
     },
-    Log { level: String, message: String },
-    Error { message: String, stack: Option<String> },
+    Log {
+        level: String,
+        message: String,
+    },
+    Error {
+        message: String,
+        stack: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "command", content = "data")]
 pub enum ScriptCommand {
-    Log { level: String, message: String },
-    EmitSystemMessage { text: String },
+    Log {
+        level: String,
+        message: String,
+    },
+    EmitSystemMessage {
+        text: String,
+    },
     EmitPlayerMessage {
         player: ScriptEntityId,
         text: String,
@@ -86,7 +99,9 @@ pub enum ScriptCommand {
         y: f32,
         z: i32,
     },
-    Delete { entity: ScriptEntityId },
+    Delete {
+        entity: ScriptEntityId,
+    },
     EmitEvent {
         name: String,
         entity: Option<ScriptEntityId>,
@@ -177,10 +192,12 @@ impl NodeScriptHost {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .kill_on_drop(true)
             .spawn()?;
         let input = child.stdin.take().ok_or(ScriptHostError::PipeUnavailable)?;
-        let output = child.stdout.take().ok_or(ScriptHostError::PipeUnavailable)?;
+        let output = child
+            .stdout
+            .take()
+            .ok_or(ScriptHostError::PipeUnavailable)?;
         let (sender, responses) = mpsc::sync_channel::<ReaderMessage>(32);
         let reader_thread = thread::Builder::new()
             .name("honknet-script-reader".to_owned())
@@ -252,7 +269,12 @@ impl NodeScriptHost {
 fn script_permissions_enabled() -> bool {
     std::env::var("HONKNET_SCRIPT_PERMISSIONS")
         .ok()
-        .map(|value| !matches!(value.trim().to_ascii_lowercase().as_str(), "0" | "false" | "off" | "no"))
+        .map(|value| {
+            !matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "0" | "false" | "off" | "no"
+            )
+        })
         .unwrap_or(true)
 }
 

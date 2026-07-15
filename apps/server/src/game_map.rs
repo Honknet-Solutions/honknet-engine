@@ -7,9 +7,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use honknet_content::{MapDocument, MapEntityDefinition, TileDefinition};
-use honknet_protocol::{
-    GridSnapshot, MapSnapshot, TileChunkSnapshot, TileDefinitionSnapshot,
-};
+use honknet_protocol::{GridSnapshot, MapSnapshot, TileChunkSnapshot, TileDefinitionSnapshot};
 
 #[derive(Debug, Clone)]
 pub struct GameMap {
@@ -32,10 +30,8 @@ struct GameGrid {
 
 impl GameMap {
     pub fn load_debug() -> Result<Self> {
-        let path = configured_workspace_path(
-            "HONKNET_MAP",
-            "examples/minimal-game/maps/debug-map.yml",
-        );
+        let path =
+            configured_workspace_path("HONKNET_MAP", "examples/minimal-game/maps/debug-map.yml");
         Self::load(path)
     }
 

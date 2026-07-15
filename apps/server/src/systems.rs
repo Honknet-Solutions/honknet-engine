@@ -54,11 +54,7 @@ pub struct MovementSystem {
 }
 
 impl MovementSystem {
-    pub fn new(
-        speed: f32,
-        map: Arc<GameMap>,
-        spatial: Arc<RwLock<SpatialHash>>,
-    ) -> Self {
+    pub fn new(speed: f32, map: Arc<GameMap>, spatial: Arc<RwLock<SpatialHash>>) -> Self {
         Self {
             speed,
             map,
@@ -89,7 +85,8 @@ impl System for MovementSystem {
                 continue;
             };
 
-            let Some(collider) = world.get_component::<ColliderComponent>(entity_id).copied() else {
+            let Some(collider) = world.get_component::<ColliderComponent>(entity_id).copied()
+            else {
                 continue;
             };
             let Some(transform) = world.get_component::<Transform>(entity_id).cloned() else {

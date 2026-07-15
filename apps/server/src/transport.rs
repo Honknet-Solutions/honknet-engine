@@ -24,9 +24,7 @@ pub async fn run(listen_addr: &str, state: AppState) -> Result<()> {
 
     info!(
         listen_addr,
-        max_connections,
-        max_connections_per_ip,
-        "WebSocket listener started"
+        max_connections, max_connections_per_ip, "WebSocket listener started"
     );
 
     loop {
@@ -67,7 +65,6 @@ pub async fn run(listen_addr: &str, state: AppState) -> Result<()> {
         });
     }
 }
-
 
 struct ConnectionMetricsGuard(Arc<EngineMetrics>);
 

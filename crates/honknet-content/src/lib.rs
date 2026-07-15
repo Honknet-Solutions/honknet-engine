@@ -12,9 +12,15 @@ use walkdir::WalkDir;
 #[derive(Debug, Error)]
 pub enum ContentError {
     #[error("failed to read {path}: {source}")]
-    Read { path: PathBuf, source: std::io::Error },
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("failed to parse {path}: {source}")]
-    Parse { path: PathBuf, source: serde_yaml::Error },
+    Parse {
+        path: PathBuf,
+        source: serde_yaml::Error,
+    },
     #[error("duplicate prototype id {0}")]
     DuplicatePrototype(String),
     #[error("prototype {prototype} references missing parent {parent}")]
@@ -76,12 +82,11 @@ impl PrototypeRegistry {
                 path: file.clone(),
                 source,
             })?;
-            let documents: Vec<EntityPrototype> = serde_yaml::from_str(&text).map_err(|source| {
-                ContentError::Parse {
+            let documents: Vec<EntityPrototype> =
+                serde_yaml::from_str(&text).map_err(|source| ContentError::Parse {
                     path: file.clone(),
                     source,
-                }
-            })?;
+                })?;
             for prototype in documents {
                 if prototype.document_type != "entity" {
                     continue;
@@ -193,7 +198,12 @@ fn yaml_files(root: &Path) -> Vec<PathBuf> {
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_file())
         .map(|entry| entry.into_path())
-        .filter(|path| matches!(path.extension().and_then(|value| value.to_str()), Some("yml" | "yaml")))
+        .filter(|path| {
+            matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("yml" | "yaml")
+            )
+        })
         .collect::<Vec<_>>();
     files.sort();
     files
@@ -238,7 +248,6 @@ pub struct FieldSchema {
     #[serde(default)]
     pub required: bool,
 }
-
 
 #[derive(Debug, Clone, Default)]
 pub struct ComponentSchemaRegistry {
@@ -285,10 +294,12 @@ impl ComponentSchemaRegistry {
         let Some(schema) = self.schemas.get(component) else {
             return Err(ContentError::UnknownComponentSchema(component.to_owned()));
         };
-        let object = input.as_object().ok_or_else(|| ContentError::InvalidComponentState {
-            component: component.to_owned(),
-            message: "component state must be an object".to_owned(),
-        })?;
+        let object = input
+            .as_object()
+            .ok_or_else(|| ContentError::InvalidComponentState {
+                component: component.to_owned(),
+                message: "component state must be an object".to_owned(),
+            })?;
         let mut output = serde_json::Map::new();
         for (field_name, field_schema) in &schema.fields {
             let value = object.get(field_name).cloned().or_else(|| {
@@ -346,7 +357,10 @@ fn validate_field(
     if !valid_type {
         return Err(ContentError::InvalidComponentState {
             component: component.to_owned(),
-            message: format!("field {field_name} has invalid type; expected {}", schema.field_type),
+            message: format!(
+                "field {field_name} has invalid type; expected {}",
+                schema.field_type
+            ),
         });
     }
     if let Some(number) = value.as_f64() {
@@ -388,7 +402,9 @@ pub struct MapDefinition {
     pub entities: Vec<MapEntityDefinition>,
 }
 
-fn default_tile_size() -> u16 { 32 }
+fn default_tile_size() -> u16 {
+    32
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TileDefinition {
@@ -401,7 +417,9 @@ pub struct TileDefinition {
     pub texture: Option<String>,
 }
 
-fn default_tile_color() -> [u8; 4] { [32, 42, 54, 255] }
+fn default_tile_color() -> [u8; 4] {
+    [32, 42, 54, 255]
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct GridDefinition {

@@ -55,11 +55,11 @@ impl EngineMetrics {
     }
 
     pub fn connection_closed(&self) {
-        let _ = self.connections_current.fetch_update(
-            Ordering::Relaxed,
-            Ordering::Relaxed,
-            |value| Some(value.saturating_sub(1)),
-        );
+        let _ =
+            self.connections_current
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                    Some(value.saturating_sub(1))
+                });
     }
 
     pub fn connection_rejected(&self) {

@@ -46,8 +46,8 @@ impl JsonStore {
         let data = serde_json::to_vec_pretty(value)?;
 
         {
-            let mut file = fs::File::create(&temporary)
-                .map_err(|source| io_error(&temporary, source))?;
+            let mut file =
+                fs::File::create(&temporary).map_err(|source| io_error(&temporary, source))?;
             file.write_all(&data)
                 .map_err(|source| io_error(&temporary, source))?;
             file.sync_all()
@@ -88,8 +88,7 @@ impl JsonStore {
             path.with_extension("json.bak"),
         ] {
             if candidate.exists() {
-                fs::remove_file(&candidate)
-                    .map_err(|source| io_error(&candidate, source))?;
+                fs::remove_file(&candidate).map_err(|source| io_error(&candidate, source))?;
             }
         }
         Ok(())
@@ -114,9 +113,9 @@ impl JsonStore {
                 .to_str()
                 .ok_or_else(|| PersistenceError::InvalidKey(key.to_owned()))?;
             if segment.is_empty()
-                || !segment
-                    .chars()
-                    .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+                || !segment.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '-' | '_')
+                })
             {
                 return Err(PersistenceError::InvalidKey(key.to_owned()));
             }
@@ -168,7 +167,10 @@ fn io_error(path: &Path, source: std::io::Error) -> PersistenceError {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use serde::{Deserialize, Serialize};
 
@@ -193,10 +195,16 @@ mod tests {
         let (root, store) = temp_store();
         store.save("world/main", &State { value: 1 }).unwrap();
         store.save("world/main", &State { value: 2 }).unwrap();
-        assert_eq!(store.load::<State>("world/main").unwrap(), Some(State { value: 2 }));
+        assert_eq!(
+            store.load::<State>("world/main").unwrap(),
+            Some(State { value: 2 })
+        );
 
         fs::write(root.join("world/main.json"), b"broken").unwrap();
-        assert_eq!(store.load::<State>("world/main").unwrap(), Some(State { value: 1 }));
+        assert_eq!(
+            store.load::<State>("world/main").unwrap(),
+            Some(State { value: 1 })
+        );
         let _ = fs::remove_dir_all(root);
     }
 

@@ -53,7 +53,10 @@ impl AppState {
                 let legacy_player_count = saved.players.len();
                 let entity_count = saved.entities.len();
                 game.restore_persistence(saved);
-                info!(legacy_player_count, entity_count, "Restored persisted world");
+                info!(
+                    legacy_player_count,
+                    entity_count, "Restored persisted world"
+                );
             }
         }
 
@@ -134,7 +137,6 @@ impl AppState {
     }
 }
 
-
 struct SaveInProgressGuard(Arc<AtomicBool>);
 
 impl Drop for SaveInProgressGuard {
@@ -148,8 +150,7 @@ fn initialize_persistence() -> Option<Arc<JsonStore>> {
         info!("Persistence is disabled by configuration");
         return None;
     }
-    let root = std::env::var("HONKNET_SAVE_ROOT")
-        .unwrap_or_else(|_| "data/saves".to_owned());
+    let root = std::env::var("HONKNET_SAVE_ROOT").unwrap_or_else(|_| "data/saves".to_owned());
     Some(Arc::new(JsonStore::new(root)))
 }
 

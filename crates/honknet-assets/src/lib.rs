@@ -1,4 +1,7 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -8,9 +11,15 @@ use walkdir::WalkDir;
 #[derive(Debug, Error)]
 pub enum AssetError {
     #[error("failed to read {path}: {source}")]
-    Read { path: PathBuf, source: std::io::Error },
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("failed to parse RSI metadata {path}: {source}")]
-    RsiMetadata { path: PathBuf, source: serde_json::Error },
+    RsiMetadata {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
     #[error("invalid RSI at {path}: {message}")]
     InvalidRsi { path: PathBuf, message: String },
 }
@@ -41,7 +50,11 @@ impl AssetManifest {
                 path: path.to_path_buf(),
                 source,
             })?;
-            let relative = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/");
+            let relative = path
+                .strip_prefix(root)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .replace('\\', "/");
             let mut hasher = Sha256::new();
             hasher.update(&data);
             entries.push(AssetManifestEntry {
@@ -51,7 +64,10 @@ impl AssetManifest {
             });
         }
         entries.sort_by(|left, right| left.path.cmp(&right.path));
-        Ok(Self { version: 1, entries })
+        Ok(Self {
+            version: 1,
+            entries,
+        })
     }
 }
 
@@ -87,7 +103,9 @@ pub struct RsiStateMetadata {
     pub delays: Vec<Vec<f32>>,
 }
 
-fn one_direction() -> u8 { 1 }
+fn one_direction() -> u8 {
+    1
+}
 
 pub fn load_rsi(path: impl AsRef<Path>) -> Result<RsiMetadata, AssetError> {
     let path = path.as_ref();
@@ -96,10 +114,11 @@ pub fn load_rsi(path: impl AsRef<Path>) -> Result<RsiMetadata, AssetError> {
         path: meta_path.clone(),
         source,
     })?;
-    let metadata: RsiMetadata = serde_json::from_str(&text).map_err(|source| AssetError::RsiMetadata {
-        path: meta_path.clone(),
-        source,
-    })?;
+    let metadata: RsiMetadata =
+        serde_json::from_str(&text).map_err(|source| AssetError::RsiMetadata {
+            path: meta_path.clone(),
+            source,
+        })?;
     let (width, height) = metadata.size.dimensions();
     if width == 0 || height == 0 {
         return Err(AssetError::InvalidRsi {
@@ -111,7 +130,10 @@ pub fn load_rsi(path: impl AsRef<Path>) -> Result<RsiMetadata, AssetError> {
         if !matches!(state.directions, 1 | 4 | 8) {
             return Err(AssetError::InvalidRsi {
                 path: path.to_path_buf(),
-                message: format!("state {} has unsupported direction count {}", state.name, state.directions),
+                message: format!(
+                    "state {} has unsupported direction count {}",
+                    state.name, state.directions
+                ),
             });
         }
         if !path.join(format!("{}.png", state.name)).is_file() {

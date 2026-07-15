@@ -13,8 +13,7 @@ pub async fn run(state: AppState, tick_rate: u64) -> Result<()> {
     let delta_seconds = tick_duration.as_secs_f32();
     let autosave_seconds = env_u64("HONKNET_AUTOSAVE_SECONDS", 300).max(1);
     let autosave_ticks = autosave_seconds.saturating_mul(tick_rate).max(1);
-    let script_timeout =
-        Duration::from_millis(env_u64("HONKNET_SCRIPT_MAX_TICK_MS", 12).max(1));
+    let script_timeout = Duration::from_millis(env_u64("HONKNET_SCRIPT_MAX_TICK_MS", 12).max(1));
     let max_script_commands = env_usize("HONKNET_SCRIPT_MAX_COMMANDS", 4_096).max(1);
     let mut interval = time::interval(tick_duration);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -117,15 +116,18 @@ pub async fn run(state: AppState, tick_rate: u64) -> Result<()> {
             }
         }
 
-        let elapsed_micros = tick_started.elapsed().as_micros().try_into().unwrap_or(u64::MAX);
+        let elapsed_micros = tick_started
+            .elapsed()
+            .as_micros()
+            .try_into()
+            .unwrap_or(u64::MAX);
         state
             .metrics
             .tick_completed(elapsed_micros, tick_budget_micros);
         if elapsed_micros > tick_budget_micros {
             warn!(
                 tick,
-                elapsed_micros,
-                tick_budget_micros, "Server tick exceeded its time budget"
+                elapsed_micros, tick_budget_micros, "Server tick exceeded its time budget"
             );
         }
     }

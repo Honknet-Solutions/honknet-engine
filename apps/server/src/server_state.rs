@@ -241,7 +241,10 @@ impl ServerState {
         identity_id: PlayerIdentityId,
     ) -> EntityNetId {
         if let Some(record) = self.players.get(&identity_id).cloned() {
-            if let Some(player) = self.world.get_component_mut::<PlayerComponent>(record.entity_id) {
+            if let Some(player) = self
+                .world
+                .get_component_mut::<PlayerComponent>(record.entity_id)
+            {
                 player.online = true;
             }
             if let Some(input) = self
@@ -344,10 +347,7 @@ impl ServerState {
         record.client_id = None;
         let entity_id = record.entity_id;
         let entity_net_id = record.entity_net_id;
-        if let Some(player) = self
-            .world
-            .get_component_mut::<PlayerComponent>(entity_id)
-        {
+        if let Some(player) = self.world.get_component_mut::<PlayerComponent>(entity_id) {
             player.online = false;
         }
         if let Some(input) = self
@@ -429,7 +429,11 @@ impl ServerState {
             payload: json!({ "actor": actor_net_id, "target": target_net_id }),
         });
 
-        if self.world.get_component::<DoorComponent>(target_id).is_some() {
+        if self
+            .world
+            .get_component::<DoorComponent>(target_id)
+            .is_some()
+        {
             let open = !self
                 .world
                 .get_component::<DoorComponent>(target_id)
@@ -443,7 +447,10 @@ impl ServerState {
             });
         }
 
-        let item = self.world.get_component::<ItemComponent>(target_id).cloned();
+        let item = self
+            .world
+            .get_component::<ItemComponent>(target_id)
+            .cloned();
         if let Some(item) = item {
             let prototype = self
                 .world
@@ -538,8 +545,8 @@ impl ServerState {
         let requester_transform = requester_id
             .and_then(|id| self.world.get_component::<Transform>(id))
             .cloned();
-        let input_state = requester_id
-            .and_then(|id| self.world.get_component::<PlayerInputComponent>(id));
+        let input_state =
+            requester_id.and_then(|id| self.world.get_component::<PlayerInputComponent>(id));
 
         let candidate_ids = requester_transform.as_ref().map_or_else(
             || self.world.entity_ids().collect::<Vec<_>>(),
@@ -754,10 +761,7 @@ impl ServerState {
         }
     }
 
-    pub fn apply_script_commands(
-        &mut self,
-        commands: Vec<ScriptCommand>,
-    ) -> Vec<OutboundMessage> {
+    pub fn apply_script_commands(&mut self, commands: Vec<ScriptCommand>) -> Vec<OutboundMessage> {
         let mut outgoing = Vec::new();
         for command in commands {
             match command {
@@ -776,12 +780,7 @@ impl ServerState {
                         ));
                     }
                 }
-                ScriptCommand::Spawn {
-                    prototype,
-                    x,
-                    y,
-                    z,
-                } => {
+                ScriptCommand::Spawn { prototype, x, y, z } => {
                     if !x.is_finite() || !y.is_finite() {
                         warn!(%prototype, x, y, z, "Script requested a spawn with invalid coordinates");
                     } else if let Err(error) = self.spawn_prototype(
@@ -821,8 +820,7 @@ impl ServerState {
                 } => {
                     if json_size(&state) > MAX_SCRIPT_STATE_BYTES {
                         warn!(entity, %component, "Script component state exceeded the size limit");
-                    } else if let Err(message) =
-                        self.set_component_state(entity, &component, state)
+                    } else if let Err(message) = self.set_component_state(entity, &component, state)
                     {
                         warn!(entity, %component, %message, "Script component command was rejected");
                     }
@@ -845,10 +843,8 @@ impl ServerState {
                         && valid_key
                         && valid_state
                     {
-                        let session_id = format!(
-                            "ui-{}-{}-{}",
-                            self.tick, player, self.next_ui_session_id
-                        );
+                        let session_id =
+                            format!("ui-{}-{}-{}", self.tick, player, self.next_ui_session_id);
                         self.next_ui_session_id = self.next_ui_session_id.saturating_add(1);
                         self.ui_sessions.insert(
                             session_id.clone(),
@@ -1016,8 +1012,12 @@ impl ServerState {
             .with_context(|| format!("unknown prototype {prototype_id}"))?;
         let entity_net_id = self.allocate_net_id();
         let entity_id = self.world.spawn();
-        self.world
-            .add_component(entity_id, NetworkIdentity { net_id: entity_net_id })?;
+        self.world.add_component(
+            entity_id,
+            NetworkIdentity {
+                net_id: entity_net_id,
+            },
+        )?;
         self.world
             .add_component(entity_id, PrototypeRef::new(prototype_id))?;
         let mut transform = Transform::new(self.map.id.clone(), position, z);
@@ -1087,7 +1087,10 @@ impl ServerState {
             }
         }
 
-        if self.world.get_component::<DoorComponent>(entity_id).is_some()
+        if self
+            .world
+            .get_component::<DoorComponent>(entity_id)
+            .is_some()
             && self
                 .world
                 .get_component::<ColliderComponent>(entity_id)
@@ -1096,7 +1099,10 @@ impl ServerState {
             self.world
                 .add_component(entity_id, ColliderComponent::solid_circle(0.45))?;
         }
-        if self.world.get_component::<PlayerComponent>(entity_id).is_some()
+        if self
+            .world
+            .get_component::<PlayerComponent>(entity_id)
+            .is_some()
             && self
                 .world
                 .get_component::<ColliderComponent>(entity_id)
@@ -1109,7 +1115,10 @@ impl ServerState {
             .world
             .get_component::<InventoryComponent>(entity_id)
             .is_none()
-            && self.world.get_component::<PlayerComponent>(entity_id).is_some()
+            && self
+                .world
+                .get_component::<PlayerComponent>(entity_id)
+                .is_some()
         {
             self.world
                 .add_component(entity_id, InventoryComponent::default())?;
@@ -1117,7 +1126,11 @@ impl ServerState {
         if !dynamic.states.is_empty() {
             self.world.add_component(entity_id, dynamic)?;
         }
-        if self.world.get_component::<DoorComponent>(entity_id).is_some() {
+        if self
+            .world
+            .get_component::<DoorComponent>(entity_id)
+            .is_some()
+        {
             let open = self
                 .world
                 .get_component::<DoorComponent>(entity_id)
@@ -1197,7 +1210,11 @@ impl ServerState {
 
         Some(EntitySnapshot {
             net_id: network.net_id,
-            revision: self.entity_revisions.get(&network.net_id).copied().unwrap_or(0),
+            revision: self
+                .entity_revisions
+                .get(&network.net_id)
+                .copied()
+                .unwrap_or(0),
             prototype: prototype.id.clone(),
             map_id: transform.map_id.clone(),
             grid: transform.grid_id.clone(),
@@ -1413,7 +1430,11 @@ impl ServerState {
                     .get("open")
                     .and_then(JsonValue::as_bool)
                     .ok_or_else(|| "Door.open must be a boolean".to_owned())?;
-                if self.world.get_component::<DoorComponent>(entity_id).is_none() {
+                if self
+                    .world
+                    .get_component::<DoorComponent>(entity_id)
+                    .is_none()
+                {
                     self.world
                         .add_component(entity_id, DoorComponent { open })
                         .map_err(|error| error.to_string())?;
@@ -1444,7 +1465,10 @@ impl ServerState {
                 }
             }
             "Item" => {
-                let current = self.world.get_component::<ItemComponent>(entity_id).cloned();
+                let current = self
+                    .world
+                    .get_component::<ItemComponent>(entity_id)
+                    .cloned();
                 let name = state
                     .get("name")
                     .and_then(JsonValue::as_str)
@@ -1581,9 +1605,8 @@ impl ServerState {
         if let Some(player) = self.world.get_component::<PlayerComponent>(entity_id) {
             self.players.remove(&player.identity_id);
         }
-        self.ui_sessions.retain(|_, session| {
-            session.owner != entity_net_id && session.target != entity_net_id
-        });
+        self.ui_sessions
+            .retain(|_, session| session.owner != entity_net_id && session.target != entity_net_id);
         self.world.despawn(entity_id);
         self.network_entities.remove(&entity_net_id);
         self.entity_revisions.remove(&entity_net_id);
@@ -1599,9 +1622,9 @@ impl ServerState {
     fn upsert_spatial_entity(&mut self, entity_id: EntityId) {
         let Some(transform) = self.world.get_component::<Transform>(entity_id).cloned() else {
             self.spatial
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(entity_id);
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(entity_id);
             return;
         };
         if self
@@ -1610,9 +1633,9 @@ impl ServerState {
             .is_some()
         {
             self.spatial
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(entity_id);
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove(entity_id);
             return;
         }
         let radius = self
@@ -1678,7 +1701,11 @@ impl ServerState {
 
 fn parse_collider(component: &ComponentDefinition) -> ColliderComponent {
     let mut radius = field_f32(component, "radius", 0.32).max(0.01);
-    if let Some(shapes) = component.fields.get("shapes").and_then(YamlValue::as_sequence) {
+    if let Some(shapes) = component
+        .fields
+        .get("shapes")
+        .and_then(YamlValue::as_sequence)
+    {
         for shape in shapes {
             if let Some(mapping) = shape.as_mapping() {
                 if mapping_string(mapping, "type").as_deref() == Some("Circle") {
@@ -1707,7 +1734,11 @@ fn parse_sprite(component: &ComponentDefinition) -> Result<SpriteComponent> {
         _ => 0,
     };
     let mut layers = Vec::new();
-    if let Some(sequence) = component.fields.get("layers").and_then(YamlValue::as_sequence) {
+    if let Some(sequence) = component
+        .fields
+        .get("layers")
+        .and_then(YamlValue::as_sequence)
+    {
         for (index, value) in sequence.iter().enumerate() {
             let Some(mapping) = value.as_mapping() else {
                 continue;
@@ -1781,10 +1812,7 @@ fn mapping_vec2(mapping: &Mapping, key: &str) -> Option<[f32; 2]> {
     if values.len() != 2 {
         return None;
     }
-    Some([
-        values[0].as_f64()? as f32,
-        values[1].as_f64()? as f32,
-    ])
+    Some([values[0].as_f64()? as f32, values[1].as_f64()? as f32])
 }
 
 fn mapping_color(mapping: &Mapping, key: &str) -> Option<[u8; 4]> {
@@ -1854,9 +1882,9 @@ fn valid_resource_path(path: &str) -> bool {
 fn valid_ui_key(key: &str) -> bool {
     !key.is_empty()
         && key.len() <= 160
-        && key
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/'))
+        && key.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/')
+        })
         && !key.contains("..")
 }
 
@@ -1929,22 +1957,37 @@ fn validate_sprite_layers(layers: &[SpriteLayerSnapshot]) -> Result<(), String> 
         if layer.key.is_empty() || layer.key.len() > 96 || layer.key.chars().any(char::is_control) {
             return Err("Sprite layer keys must contain 1 to 96 printable characters".to_owned());
         }
-        if !layer.scale.iter().all(|value| value.is_finite() && value.abs() <= 64.0)
-            || !layer.offset.iter().all(|value| value.is_finite() && value.abs() <= 4_096.0)
+        if !layer
+            .scale
+            .iter()
+            .all(|value| value.is_finite() && value.abs() <= 64.0)
+            || !layer
+                .offset
+                .iter()
+                .all(|value| value.is_finite() && value.abs() <= 4_096.0)
             || !layer.rotation.is_finite()
             || layer.direction > 7
         {
-            return Err(format!("Sprite layer {} has invalid transform values", layer.key));
+            return Err(format!(
+                "Sprite layer {} has invalid transform values",
+                layer.key
+            ));
         }
         let path = match &layer.source {
             SpriteSourceSnapshot::Texture { path } | SpriteSourceSnapshot::Rsi { path, .. } => path,
         };
         if !valid_resource_path(path) {
-            return Err(format!("Sprite layer {} has an invalid resource path", layer.key));
+            return Err(format!(
+                "Sprite layer {} has an invalid resource path",
+                layer.key
+            ));
         }
         if let SpriteSourceSnapshot::Rsi { state, .. } = &layer.source {
             if state.is_empty() || state.len() > 128 || state.chars().any(char::is_control) {
-                return Err(format!("Sprite layer {} has an invalid RSI state", layer.key));
+                return Err(format!(
+                    "Sprite layer {} has an invalid RSI state",
+                    layer.key
+                ));
             }
         }
     }

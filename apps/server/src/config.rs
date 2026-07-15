@@ -29,8 +29,7 @@ impl ServerConfig {
         let path = path.as_ref();
         let text = fs::read_to_string(path)
             .with_context(|| format!("failed to read config {}", path.display()))?;
-        toml::from_str(&text)
-            .with_context(|| format!("failed to parse config {}", path.display()))
+        toml::from_str(&text).with_context(|| format!("failed to parse config {}", path.display()))
     }
 
     pub fn load_default() -> Result<Self> {
@@ -48,7 +47,10 @@ impl ServerConfig {
             std::env::set_var("HONKNET_COMPONENT_SCHEMAS", root);
         }
         std::env::set_var("HONKNET_MAP", &self.content.startup_map);
-        std::env::set_var("HONKNET_SNAPSHOT_RATE", self.network.snapshot_rate.to_string());
+        std::env::set_var(
+            "HONKNET_SNAPSHOT_RATE",
+            self.network.snapshot_rate.to_string(),
+        );
         std::env::set_var("HONKNET_PVS_RADIUS", self.network.pvs_radius.to_string());
         std::env::set_var(
             "HONKNET_MAX_PVS_ENTITIES",
@@ -299,24 +301,60 @@ impl Default for ObservabilitySection {
     }
 }
 
-fn default_true() -> bool { true }
-fn default_engine_name() -> String { "Honknet Engine".to_owned() }
-fn default_engine_version() -> String { env!("CARGO_PKG_VERSION").to_owned() }
-fn default_protocol_version() -> u32 { 4 }
-fn default_tick_rate() -> u64 { 30 }
-fn default_listen() -> String { "0.0.0.0:3015".to_owned() }
-fn default_snapshot_rate() -> u64 { 20 }
-fn default_pvs_radius() -> f32 { 32.0 }
-fn default_max_pvs_entities() -> usize { 4_096 }
-fn default_max_message_bytes() -> usize { 262_144 }
-fn default_handshake_timeout_ms() -> u64 { 10_000 }
-fn default_client_timeout_ms() -> u64 { 15_000 }
-fn default_max_connections() -> usize { 256 }
-fn default_max_connections_per_ip() -> usize { 8 }
-fn default_event_channel_capacity() -> usize { 4_096 }
-fn default_init_timeout_ms() -> u64 { 5_000 }
-fn default_max_tick_ms() -> u64 { 12 }
-fn default_max_commands_per_tick() -> usize { 4_096 }
+fn default_true() -> bool {
+    true
+}
+fn default_engine_name() -> String {
+    "Honknet Engine".to_owned()
+}
+fn default_engine_version() -> String {
+    env!("CARGO_PKG_VERSION").to_owned()
+}
+fn default_protocol_version() -> u32 {
+    4
+}
+fn default_tick_rate() -> u64 {
+    30
+}
+fn default_listen() -> String {
+    "0.0.0.0:3015".to_owned()
+}
+fn default_snapshot_rate() -> u64 {
+    20
+}
+fn default_pvs_radius() -> f32 {
+    32.0
+}
+fn default_max_pvs_entities() -> usize {
+    4_096
+}
+fn default_max_message_bytes() -> usize {
+    262_144
+}
+fn default_handshake_timeout_ms() -> u64 {
+    10_000
+}
+fn default_client_timeout_ms() -> u64 {
+    15_000
+}
+fn default_max_connections() -> usize {
+    256
+}
+fn default_max_connections_per_ip() -> usize {
+    8
+}
+fn default_event_channel_capacity() -> usize {
+    4_096
+}
+fn default_init_timeout_ms() -> u64 {
+    5_000
+}
+fn default_max_tick_ms() -> u64 {
+    12
+}
+fn default_max_commands_per_tick() -> usize {
+    4_096
+}
 fn default_prototype_roots() -> Vec<String> {
     vec!["examples/minimal-game/content/prototypes".to_owned()]
 }
@@ -335,10 +373,24 @@ fn default_resource_roots() -> Vec<String> {
 fn default_localization_roots() -> Vec<String> {
     vec!["examples/minimal-game/localization".to_owned()]
 }
-fn default_script_host() -> String { "apps/script-host/dist/main.js".to_owned() }
-fn default_game_module() -> String { "examples/minimal-game/server/dist/index.js".to_owned() }
-fn default_save_root() -> String { "data/saves".to_owned() }
-fn default_autosave_seconds() -> u64 { 300 }
-fn default_auth_clock_skew_seconds() -> u64 { 30 }
-fn default_auth_max_token_lifetime_seconds() -> u64 { 2_592_000 }
-fn default_observability_listen() -> String { "127.0.0.1:3016".to_owned() }
+fn default_script_host() -> String {
+    "apps/script-host/dist/main.js".to_owned()
+}
+fn default_game_module() -> String {
+    "examples/minimal-game/server/dist/index.js".to_owned()
+}
+fn default_save_root() -> String {
+    "data/saves".to_owned()
+}
+fn default_autosave_seconds() -> u64 {
+    300
+}
+fn default_auth_clock_skew_seconds() -> u64 {
+    30
+}
+fn default_auth_max_token_lifetime_seconds() -> u64 {
+    2_592_000
+}
+fn default_observability_listen() -> String {
+    "127.0.0.1:3016".to_owned()
+}

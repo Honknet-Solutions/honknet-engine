@@ -41,7 +41,8 @@ impl SpatialHash {
         y: f32,
         radius: f32,
     ) {
-        let keys = self.keys_for_bounds(map_hash, z, x - radius, y - radius, x + radius, y + radius);
+        let keys =
+            self.keys_for_bounds(map_hash, z, x - radius, y - radius, x + radius, y + radius);
         if self
             .entity_cells
             .get(&entity)
@@ -97,7 +98,8 @@ impl SpatialHash {
         radius: f32,
     ) -> Vec<EntityId> {
         let mut unique = HashSet::new();
-        for key in self.keys_for_bounds(map_hash, z, x - radius, y - radius, x + radius, y + radius) {
+        for key in self.keys_for_bounds(map_hash, z, x - radius, y - radius, x + radius, y + radius)
+        {
             if let Some(entries) = self.cells.get(&key) {
                 unique.extend(entries.iter().copied());
             }

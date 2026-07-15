@@ -53,8 +53,8 @@ pub async fn run(stream: TcpStream, peer_addr: SocketAddr, state: AppState) -> R
     let snapshot_period = Duration::from_secs_f64(1.0 / snapshot_rate as f64);
     let jitter_window_micros = snapshot_period.as_micros().max(1);
     let jitter_seed = client_id.as_u128() % jitter_window_micros;
-    let snapshot_start = time::Instant::now()
-        + Duration::from_micros(jitter_seed.try_into().unwrap_or(u64::MAX));
+    let snapshot_start =
+        time::Instant::now() + Duration::from_micros(jitter_seed.try_into().unwrap_or(u64::MAX));
     let mut snapshot_interval = time::interval_at(snapshot_start, snapshot_period);
     snapshot_interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
     let mut maintenance_interval = time::interval(Duration::from_secs(1));
@@ -337,12 +337,24 @@ async fn handle_client_message(
             movement,
         } => {
             let Some(entity_net_id) = *player_net_id else {
-                send_error(sender, "network.input_before_hello", "Input rejected before handshake", false).await?;
+                send_error(
+                    sender,
+                    "network.input_before_hello",
+                    "Input rejected before handshake",
+                    false,
+                )
+                .await?;
                 return Ok(true);
             };
             if !input_limiter.allow(1.0) {
                 state.metrics.rate_limited_message();
-                send_error(sender, "rate_limit.input", "Input rate limit exceeded", false).await?;
+                send_error(
+                    sender,
+                    "rate_limit.input",
+                    "Input rate limit exceeded",
+                    false,
+                )
+                .await?;
                 return Ok(true);
             }
             match state.game.write().await.set_movement_input(
@@ -353,7 +365,13 @@ async fn handle_client_message(
             ) {
                 InputUpdateResult::Accepted | InputUpdateResult::Stale => {}
                 InputUpdateResult::EntityMissing => {
-                    send_error(sender, "world.player_missing", "Player entity is missing", true).await?;
+                    send_error(
+                        sender,
+                        "world.player_missing",
+                        "Player entity is missing",
+                        true,
+                    )
+                    .await?;
                     return Ok(false);
                 }
             }
@@ -365,7 +383,13 @@ async fn handle_client_message(
             };
             if !ui_limiter.allow(1.0) {
                 state.metrics.rate_limited_message();
-                send_error(sender, "rate_limit.interact", "Interaction rate limit exceeded", false).await?;
+                send_error(
+                    sender,
+                    "rate_limit.interact",
+                    "Interaction rate limit exceeded",
+                    false,
+                )
+                .await?;
                 return Ok(true);
             }
             if let Some(text) = state.game.write().await.interact(entity_net_id, target) {
@@ -391,18 +415,25 @@ async fn handle_client_message(
             };
             if !ui_limiter.allow(1.0) {
                 state.metrics.rate_limited_message();
-                send_error(sender, "rate_limit.ui", "UI action rate limit exceeded", false).await?;
+                send_error(
+                    sender,
+                    "rate_limit.ui",
+                    "UI action rate limit exceeded",
+                    false,
+                )
+                .await?;
                 return Ok(true);
             }
             if action.len() > 128 || session_id.len() > 160 {
                 send_error(sender, "ui.invalid_action", "UI action is invalid", false).await?;
                 return Ok(true);
             }
-            if let Err(message) = state
-                .game
-                .write()
-                .await
-                .handle_ui_action(player, &session_id, action, payload)
+            if let Err(message) =
+                state
+                    .game
+                    .write()
+                    .await
+                    .handle_ui_action(player, &session_id, action, payload)
             {
                 send_error(sender, "ui.invalid_session", message, false).await?;
             }
@@ -428,10 +459,12 @@ async fn handle_client_message(
                 .await
                 .player_name(entity_net_id)
                 .unwrap_or_else(|| "Unknown".to_owned());
-            let _ = state.events.send(OutboundMessage::broadcast(ServerMessage::Chat {
-                from,
-                text,
-            }));
+            let _ = state
+                .events
+                .send(OutboundMessage::broadcast(ServerMessage::Chat {
+                    from,
+                    text,
+                }));
         }
 
         ClientMessage::Ping { nonce } => {

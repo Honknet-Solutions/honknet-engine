@@ -105,7 +105,6 @@ pub struct World {
     storages: HashMap<TypeId, Box<dyn ErasedStorage>>,
 }
 
-
 impl Default for World {
     fn default() -> Self {
         Self::new()
@@ -169,7 +168,8 @@ impl World {
     }
 
     pub fn component_count<T: Component>(&self) -> usize {
-        self.storage::<T>().map_or(0, |storage| storage.entities.len())
+        self.storage::<T>()
+            .map_or(0, |storage| storage.entities.len())
     }
 
     pub fn add_component<T: Component>(
@@ -180,7 +180,9 @@ impl World {
         if !self.alive.contains(&entity_id) {
             return Err(WorldError::EntityNotFound(entity_id));
         }
-        Ok(self.storage_mut_or_insert::<T>().insert(entity_id, component))
+        Ok(self
+            .storage_mut_or_insert::<T>()
+            .insert(entity_id, component))
     }
 
     pub fn remove_component<T: Component>(
@@ -190,7 +192,9 @@ impl World {
         if !self.alive.contains(&entity_id) {
             return Err(WorldError::EntityNotFound(entity_id));
         }
-        Ok(self.storage_mut::<T>().is_some_and(|storage| storage.remove(entity_id)))
+        Ok(self
+            .storage_mut::<T>()
+            .is_some_and(|storage| storage.remove(entity_id)))
     }
 
     pub fn get_component<T: Component>(&self, entity_id: EntityId) -> Option<&T> {
@@ -212,15 +216,10 @@ impl World {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (EntityId, EntityRef<'_>)> + '_ {
-        self.alive.iter().copied().map(|id| {
-            (
-                id,
-                EntityRef {
-                    world: self,
-                    id,
-                },
-            )
-        })
+        self.alive
+            .iter()
+            .copied()
+            .map(|id| (id, EntityRef { world: self, id }))
     }
 
     pub fn query_ids<T: Component>(&self) -> Vec<EntityId> {
@@ -251,18 +250,18 @@ impl World {
             return;
         };
 
-        let (small, large) = if a.entities.len() <= b.entities.len() {
-            (a, b)
+        let (small_entities, large_sparse) = if a.entities.len() <= b.entities.len() {
+            (&a.entities, &b.sparse)
         } else {
-            (b, a)
+            (&b.entities, &a.sparse)
         };
-        output.reserve(small.entities.len());
+
+        output.reserve(small_entities.len());
         output.extend(
-            small
-                .entities
+            small_entities
                 .iter()
                 .copied()
-                .filter(|entity_id| large.sparse.contains_key(entity_id)),
+                .filter(|entity_id| large_sparse.contains_key(entity_id)),
         );
     }
 
