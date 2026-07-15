@@ -1,0 +1,16 @@
+[game]
+id = "example-station"
+name = "Example Station"
+version = "0.2.0-rc.1"
+
+[server]
+module = "server/dist/index.js"
+
+[client]
+module = "client/dist/index.js"
+
+[content]
+prototypes = ["content/prototypes"]
+maps = ["maps"]
+resources = ["resources"]
+localization = ["localization"]

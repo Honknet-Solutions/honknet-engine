@@ -1,6 +1,6 @@
 [package]
-name = "ss15-server"
-version = "0.1.0"
+name = "honknet-server"
+version = "0.2.0-rc.1"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
@@ -8,11 +8,18 @@ repository.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+futures-util.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+toml.workspace = true
 uuid.workspace = true
-ss15-core = { path = "../../crates/ss15-core" }
-ss15-protocol = { path = "../../crates/ss15-protocol" }
+honknet-core = { path = "../../crates/honknet-core" }
+honknet-protocol = { path = "../../crates/honknet-protocol" }
+honknet-script = { path = "../../crates/honknet-script" }
+honknet-content = { path = "../../crates/honknet-content" }
+honknet-persistence = { path = "../../crates/honknet-persistence" }

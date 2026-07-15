@@ -1,0 +1,23 @@
+id: example-door-state
+initial: closed
+states:
+  closed:
+    entry:
+      - set-sprite-closed
+    exit: []
+    transitions:
+      - event: open
+        target: open
+    editor:
+      x: 100
+      y: 140
+  open:
+    entry:
+      - set-sprite-open
+    exit: []
+    transitions:
+      - event: close
+        target: closed
+    editor:
+      x: 420
+      y: 140

@@ -1,0 +1,9 @@
+engine = "0.2.0-rc.1"
+protocol = 4
+content_schema = 1
+
+[sdk]
+server = "0.2.0-rc.1"
+client = "0.2.0-rc.1"
+shared = "0.2.0-rc.1"
+hui = "0.2.0-rc.1"

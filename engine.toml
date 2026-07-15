@@ -1,0 +1,49 @@
+[engine]
+name = "Honknet Engine"
+version = "0.2.0-rc.1"
+protocol_version = 4
+tick_rate = 30
+
+[network]
+listen = "127.0.0.1:3015"
+max_message_bytes = 262144
+handshake_timeout_ms = 10000
+client_timeout_ms = 15000
+snapshot_rate = 15
+pvs_radius = 32.0
+max_pvs_entities = 4096
+max_connections = 256
+max_connections_per_ip = 8
+event_channel_capacity = 4096
+
+[content]
+prototype_roots = ["examples/minimal-game/content/prototypes"]
+map_roots = ["examples/minimal-game/maps"]
+component_schema_roots = ["examples/minimal-game/content/component-schemas"]
+startup_map = "examples/minimal-game/maps/debug-map.yml"
+resource_roots = ["examples/minimal-game/resources"]
+localization_roots = ["examples/minimal-game/localization"]
+
+[scripting]
+enabled = true
+host = "apps/script-host/dist/main.js"
+init_timeout_ms = 5000
+module = "examples/minimal-game/server/dist/index.js"
+max_tick_ms = 12
+max_commands_per_tick = 4096
+
+[persistence]
+enabled = true
+root = "data/saves"
+autosave_seconds = 300
+
+[auth]
+# Development defaults to guest identities. Public deployments should set
+# required = true and provide HONKNET_AUTH_SECRET with at least 32 random bytes.
+required = false
+clock_skew_seconds = 30
+max_token_lifetime_seconds = 2592000
+
+[observability]
+enabled = true
+listen = "127.0.0.1:3016"

@@ -1,0 +1,32 @@
+[Unit]
+Description=Honknet Honknet Runtime server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=honknet
+Group=honknet
+WorkingDirectory=/opt/honknet
+Environment=RUST_LOG=info
+Environment=HONKNET_CONFIG=/etc/honknet/engine.toml
+EnvironmentFile=-/etc/honknet/server.env
+ExecStart=/opt/honknet/honknet-server
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/honknet
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+SystemCallArchitectures=native
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

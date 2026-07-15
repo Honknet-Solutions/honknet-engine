@@ -1,0 +1,58 @@
+name: Capacity Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      clients:
+        description: Concurrent WebSocket clients
+        required: true
+        default: '200'
+      entities:
+        description: Synthetic server entities
+        required: true
+        default: '100000'
+      duration_seconds:
+        description: Test duration in seconds
+        required: true
+        default: '900'
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.85.1
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci --no-audit --no-fund
+      - run: npm run validate
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: cargo generate-lockfile
+      - run: cargo build --workspace --release --locked
+      - name: Run capacity test
+        env:
+          HONKNET_SOAK_CLIENTS: ${{ inputs.clients }}
+          HONKNET_SOAK_ENTITIES: ${{ inputs.entities }}
+          HONKNET_SOAK_DURATION_SECONDS: ${{ inputs.duration_seconds }}
+          HONKNET_SOAK_LOG: ${{ github.workspace }}/soak-server.log
+        run: npm run soak:test
+      - name: Upload capacity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: honknet-capacity-${{ inputs.clients }}c-${{ inputs.entities }}e
+          path: |
+            soak-server.log
+            soak-metrics.prom
+          retention-days: 30

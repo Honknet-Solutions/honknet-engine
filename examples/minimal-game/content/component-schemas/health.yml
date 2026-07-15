@@ -1,0 +1,13 @@
+type: component-schema
+id: Health
+replication:
+  mode: server-to-client
+fields:
+  current:
+    type: float
+    default: 100
+    minimum: 0
+  maximum:
+    type: float
+    default: 100
+    minimum: 1

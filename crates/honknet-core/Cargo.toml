@@ -1,0 +1,11 @@
+[package]
+name = "honknet-core"
+version = "0.2.0-rc.1"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+honknet-protocol = { path = "../honknet-protocol" }
+serde.workspace = true

@@ -2,21 +2,47 @@
 resolver = "2"
 members = [
     "apps/server",
-    "crates/ss15-core",
-    "crates/ss15-protocol",
+    "crates/honknet-core",
+    "crates/honknet-protocol",
+    "crates/honknet-content",
+    "crates/honknet-assets",
+    "crates/honknet-script",
+    "crates/honknet-persistence",
+    "crates/honknet-admin",
+    "crates/honknet-benchmarks",
 ]
 
 [workspace.package]
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Honknet Solutions"]
-repository = "https://github.com/https://github.com/Honknet-Solutions/space-station-15/space-station-15"
+repository = "https://github.com/Honknet-Solutions/honknet-engine"
+version = "0.2.0-rc.1"
 
 [workspace.dependencies]
 anyhow = "1"
+futures-util = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.24"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+sha2 = "0.10"
+walkdir = "2"
+toml = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[profile.bench]
+inherits = "release"
+debug = 1
+strip = "none"
