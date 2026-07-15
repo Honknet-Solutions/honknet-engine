@@ -1689,6 +1689,234 @@ impl ServerState {
         }
     }
 
+    fn restore_legacy_players(&mut self, players: Vec<LegacyPersistedPlayer>) {
+        for player in players {
+            let grid_id = self.map.default_grid_id().map(ToOwned::to_owned);
+            let Ok((entity_id, entity_net_id)) = self.spawn_prototype(
+                PLAYER_PROTOTYPE,
+                Vec2 {
+                    x: player.position.x,
+                    y: player.position.y,
+                },
+                player.position.z,
+                grid_id,
+                0.0,
+            ) else {
+                warn!(
+                    identity = %player.identity_id,
+                    "Skipping legacy persisted player because its prototype could not be restored"
+                );
+                continue;
+            };
+
+            if let Some(component) = self.world.get_component_mut::<PlayerComponent>(entity_id) {
+                component.identity_id = player.identity_id.clone();
+                component.display_name = guest_display_name(&player.identity_id);
+                component.online = false;
+            }
+
+            self.players.insert(
+                player.identity_id.clone(),
+                PlayerRecord {
+                    client_id: None,
+                    entity_id,
+                    entity_net_id,
+                },
+            );
+
+            if let Some(inventory) = self
+                .world
+                .get_component_mut::<InventoryComponent>(entity_id)
+            {
+                for name in player.inventory {
+                    if inventory.can_insert() {
+                        inventory.items.push(InventoryEntry {
+                            entity_net_id: 0,
+                            prototype: name.clone(),
+                            display_name: name,
+                        });
+                    }
+                }
+            }
+
+            self.mark_entity_dirty(entity_net_id);
+        }
+    }
+
+    fn restore_entities(&mut self, entities: Vec<PersistedEntity>) {
+        if entities.is_empty() {
+            return;
+        }
+
+        self.world = World::new();
+        self.players.clear();
+        self.network_entities.clear();
+        self.entity_revisions.clear();
+        self.movement_replication_sequences.clear();
+        self.movement_scan.clear();
+        self.ui_sessions.clear();
+        self.script_dirty_entities.clear();
+        self.script_removed_entities.clear();
+        self.next_entity_net_id = 1;
+        self.next_entity_revision = 1;
+        self.next_ui_session_id = 1;
+        self.spatial
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clear();
+
+        for persisted in entities {
+            let PersistedEntity {
+                prototype,
+                map_id,
+                grid,
+                position,
+                rotation,
+                player_identity,
+                player_display_name,
+                door_open,
+                dynamic,
+                inventory,
+            } = persisted;
+
+            let Ok((entity_id, entity_net_id)) = self.spawn_prototype(
+                &prototype,
+                Vec2 {
+                    x: position.x,
+                    y: position.y,
+                },
+                position.z,
+                grid,
+                rotation,
+            ) else {
+                warn!(
+                    %prototype,
+                    "Skipping persisted entity because its prototype could not be restored"
+                );
+                continue;
+            };
+
+            if let Some(transform) = self.world.get_component_mut::<Transform>(entity_id) {
+                transform.map_id = map_id;
+            }
+
+            if let Some(open) = door_open {
+                self.set_door_open(entity_id, open);
+            }
+
+            if !dynamic.is_empty() {
+                if self
+                    .world
+                    .get_component::<DynamicComponentSet>(entity_id)
+                    .is_none()
+                {
+                    let _ = self
+                        .world
+                        .add_component(entity_id, DynamicComponentSet::default());
+                }
+
+                if let Some(component_set) = self
+                    .world
+                    .get_component_mut::<DynamicComponentSet>(entity_id)
+                {
+                    component_set.states = dynamic;
+                }
+            }
+
+            if let Some(identity_id) = player_identity {
+                let display_name =
+                    player_display_name.unwrap_or_else(|| guest_display_name(&identity_id));
+
+                if let Some(player) = self.world.get_component_mut::<PlayerComponent>(entity_id) {
+                    player.identity_id = identity_id.clone();
+                    player.display_name = display_name;
+                    player.online = false;
+
+                    self.players.insert(
+                        identity_id,
+                        PlayerRecord {
+                            client_id: None,
+                            entity_id,
+                            entity_net_id,
+                        },
+                    );
+                } else {
+                    warn!(
+                        %prototype,
+                        "Persisted player identity was attached to a prototype without Player"
+                    );
+                }
+            }
+
+            for item in inventory {
+                let Ok((item_id, item_net_id)) = self.spawn_prototype(
+                    &item.prototype,
+                    Vec2 { x: 0.0, y: 0.0 },
+                    position.z,
+                    None,
+                    0.0,
+                ) else {
+                    warn!(
+                        prototype = %item.prototype,
+                        owner = entity_net_id,
+                        "Skipping persisted inventory item because its prototype could not be restored"
+                    );
+                    continue;
+                };
+
+                let _ = self.world.remove_component::<Transform>(item_id);
+                let _ = self.world.remove_component::<ColliderComponent>(item_id);
+                let _ = self.world.add_component(
+                    item_id,
+                    ContainedInComponent {
+                        owner_net_id: entity_net_id,
+                    },
+                );
+                self.spatial
+                    .write()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .remove(item_id);
+
+                let insert_result = self
+                    .world
+                    .get_component_mut::<InventoryComponent>(entity_id)
+                    .map(|owner_inventory| {
+                        if owner_inventory.can_insert() {
+                            owner_inventory.items.push(InventoryEntry {
+                                entity_net_id: item_net_id,
+                                prototype: item.prototype,
+                                display_name: item.display_name,
+                            });
+                            true
+                        } else {
+                            false
+                        }
+                    });
+
+                match insert_result {
+                    Some(true) => {}
+                    Some(false) => {
+                        self.delete_entity(item_id, item_net_id);
+                        warn!(
+                            owner = entity_net_id,
+                            "Persisted inventory exceeded its configured capacity"
+                        );
+                    }
+                    None => {
+                        self.delete_entity(item_id, item_net_id);
+                        warn!(
+                            owner = entity_net_id,
+                            "Persisted inventory item had an owner without Inventory"
+                        );
+                    }
+                }
+            }
+
+            self.mark_entity_dirty(entity_net_id);
+            self.upsert_spatial_entity(entity_id);
+        }
+    }
+
     fn allocate_net_id(&mut self) -> EntityNetId {
         let net_id = self.next_entity_net_id;
         self.next_entity_net_id = self

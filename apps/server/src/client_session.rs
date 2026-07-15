@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use honknet_protocol::{
-    ClientMessage, EntityNetId, EntitySnapshot, PlayerIdentityId, ServerMessage, PROTOCOL_VERSION,
+    ClientMessage, EntityNetId, PlayerIdentityId, ServerMessage, PROTOCOL_VERSION,
 };
 use tokio::{net::TcpStream, sync::broadcast, time};
 use tokio_tungstenite::{

@@ -255,7 +255,6 @@ impl World {
         } else {
             (&b.entities, &a.sparse)
         };
-
         output.reserve(small_entities.len());
         output.extend(
             small_entities

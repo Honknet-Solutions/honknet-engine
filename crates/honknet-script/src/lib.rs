@@ -281,6 +281,7 @@ fn script_permissions_enabled() -> bool {
 impl Drop for NodeScriptHost {
     fn drop(&mut self) {
         let _ = self.child.kill();
+        let _ = self.child.wait();
         if let Some(reader) = self.reader_thread.take() {
             let _ = reader.join();
         }
