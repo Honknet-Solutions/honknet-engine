@@ -1,0 +1,13 @@
+[Unit]
+Description=Honknet authoritative server
+After=network-online.target
+[Service]
+User=honknet
+WorkingDirectory=/opt/honknet
+ExecStart=/opt/honknet/honknet-server --listen 0.0.0.0:3015
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/honknet
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,0 @@
-- type: entity
-  id: BaseEntity
-  abstract: true
-  components:
-    - type: Transform
-    - type: NetworkIdentity

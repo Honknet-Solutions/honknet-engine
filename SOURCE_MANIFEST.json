@@ -1,0 +1,692 @@
+[
+  {
+    "path": ".github/workflows/ci.yml",
+    "bytes": 825,
+    "sha256": "0ba7e31140a1af8a81d22c394b565d97e53dbf63a064857f2c2e5a9c45f9fb0c"
+  },
+  {
+    "path": ".gitignore",
+    "bytes": 68,
+    "sha256": "deed938d57d5bc3f6a339b011f2db17074da10fe042e1b67bc44b6f6528c9c4f"
+  },
+  {
+    "path": "Cargo.toml",
+    "bytes": 2590,
+    "sha256": "cdf58eb8b658ec15e358c83eeefbf10d5882f7886b9c12c4d5a25716d4a1bf3e"
+  },
+  {
+    "path": "Dockerfile",
+    "bytes": 334,
+    "sha256": "c00a731db1aefd5a613800f6e53adb69c0536c7aa89b5b16deff62c415ba2de1"
+  },
+  {
+    "path": "IMPLEMENTATION_MATRIX.md",
+    "bytes": 1220,
+    "sha256": "0d09c05d087f1839f50a47a2075a21b9158fcc42f09305fe430643bfff9710ae"
+  },
+  {
+    "path": "LICENSE",
+    "bytes": 95,
+    "sha256": "093ab4801ef993323002040b0ee3cd524b7951cddfd0775642228b18d75fdab0"
+  },
+  {
+    "path": "README.md",
+    "bytes": 840,
+    "sha256": "25fe4a320682895dcc81aa0a4ef1a2e41bd5d6e2936fa8fd9258ad872a0912f2"
+  },
+  {
+    "path": "RELEASE_NOTES.md",
+    "bytes": 848,
+    "sha256": "5bc75d5dd7edb4e0eaca0bc8a9ad4fc797e1041a6c3824f0325d0e9b050aa162"
+  },
+  {
+    "path": "VERIFICATION.md",
+    "bytes": 1042,
+    "sha256": "7d5465398ef20f6baa5c2115e170c2fcfd9aab954eddef2e53e07348519ada84"
+  },
+  {
+    "path": "apps/honknet-cli/Cargo.toml",
+    "bytes": 353,
+    "sha256": "6f067e19f444d9e9ea500c70748256f39bf6b63221958c6877afef6f8b069bdc"
+  },
+  {
+    "path": "apps/honknet-cli/src/main.rs",
+    "bytes": 4730,
+    "sha256": "5d1b758e0146e537529f4d93ac21ce403bc6b3837d396ac679b3698891c3a306"
+  },
+  {
+    "path": "apps/honknet-client/Cargo.toml",
+    "bytes": 259,
+    "sha256": "b69908434ce3521605fd8d59d230ce4d06da97372c66b85e44957c5aa50af5ad"
+  },
+  {
+    "path": "apps/honknet-client/src/main.rs",
+    "bytes": 6233,
+    "sha256": "48e9d95ceaa5c5159c5794abc8924d3025282cbd3d234e188992abe0ea4dd7fc"
+  },
+  {
+    "path": "apps/honknet-client/src/shader.wgsl",
+    "bytes": 274,
+    "sha256": "609fa9e15fe0099a890efb24e9b59885c7a8fca6593ddbc5fd7d81e39955bfce"
+  },
+  {
+    "path": "apps/honknet-headless-client/Cargo.toml",
+    "bytes": 407,
+    "sha256": "9307445b75cdaee3f6c2fc0baa7fe3fb1c52e776ac11aee5870f13c6a5913b93"
+  },
+  {
+    "path": "apps/honknet-headless-client/src/main.rs",
+    "bytes": 1537,
+    "sha256": "4928be86ab8468a7f6c6bf2342c796688a0eaa48aa3043cdefa9c5cbe43a1c19"
+  },
+  {
+    "path": "apps/honknet-server/Cargo.toml",
+    "bytes": 858,
+    "sha256": "2676c6e365ccb8eb094ef0178c8beb7ed48b8c703b495250ed5f9b9acbc0dfed"
+  },
+  {
+    "path": "apps/honknet-server/src/main.rs",
+    "bytes": 4769,
+    "sha256": "547c73a8953e1bd9b81bc27a15ba024bee87ecc985d7ac20903239b142edaccf"
+  },
+  {
+    "path": "apps/honknet-studio/index.html",
+    "bytes": 70,
+    "sha256": "ca017ccaaaf9f853b67f870979f057d9fe675d506f701cd2706d4d6e5f097a11"
+  },
+  {
+    "path": "apps/honknet-studio/package.json",
+    "bytes": 341,
+    "sha256": "e4b5f1cae11a3521b29894d649e56fc767e8af7c01a7759aa02f0beded57b61b"
+  },
+  {
+    "path": "apps/honknet-studio/src/main.ts",
+    "bytes": 11824,
+    "sha256": "feabcc3cedd1ce04dca83115991d04a0dfef14ddd021ada6a7db7ac8b259d75b"
+  },
+  {
+    "path": "apps/honknet-studio/src/style.css",
+    "bytes": 1462,
+    "sha256": "546432c13d1c99ba12acfb933bf4eceb7da3af570c9a1042e72b2d88b03bf1b2"
+  },
+  {
+    "path": "apps/honknet-studio/src/yaml.d.ts",
+    "bytes": 149,
+    "sha256": "b7e3b01bea4c127b658585b05d48b9903eb86bb144518e004a771ae341d3c878"
+  },
+  {
+    "path": "apps/honknet-studio/tsconfig.json",
+    "bytes": 231,
+    "sha256": "e047bc52c0833e77e26ca379279200a27106a7f6c2bc092f77e7d17a6e30172c"
+  },
+  {
+    "path": "apps/honknet-web/Cargo.toml",
+    "bytes": 371,
+    "sha256": "9dbec4e9b2d1682fc081857ca3144a34cfd065c7daaeaf65551e2c187b54eaf7"
+  },
+  {
+    "path": "apps/honknet-web/src/lib.rs",
+    "bytes": 1772,
+    "sha256": "a7c7fde73f3f8fe9994391d68ab308034f9232023fe4608125107aa9168095d8"
+  },
+  {
+    "path": "apps/honknet-web-shell/index.html",
+    "bytes": 103,
+    "sha256": "975c482071cf3ad6efe0ad0de63f45e71efb9e71c39e1db112031abe32eaa3d9"
+  },
+  {
+    "path": "apps/honknet-web-shell/package.json",
+    "bytes": 298,
+    "sha256": "2e1895ffbab0116008ba7339a036482ab370827baec9547a11fc7e1603bd0371"
+  },
+  {
+    "path": "apps/honknet-web-shell/src/audio.ts",
+    "bytes": 1773,
+    "sha256": "9a63480b441bd82010633ac5440e293c4e8b34da5fc2319a5b34a9814f1fc4fc"
+  },
+  {
+    "path": "apps/honknet-web-shell/src/main.ts",
+    "bytes": 593,
+    "sha256": "05a1e063cabf9c15ed81d37659260a47cec4029260a8de114245bd9403eb04de"
+  },
+  {
+    "path": "apps/honknet-web-shell/tsconfig.json",
+    "bytes": 231,
+    "sha256": "e047bc52c0833e77e26ca379279200a27106a7f6c2bc092f77e7d17a6e30172c"
+  },
+  {
+    "path": "benchmarks/Cargo.toml",
+    "bytes": 208,
+    "sha256": "bdad65261f715e8889bfecf054d6879282f215a69338a3c64b1bde9c6b13f47c"
+  },
+  {
+    "path": "benchmarks/src/main.rs",
+    "bytes": 728,
+    "sha256": "55ab51b5a39eb8897d98cf5f0c48cfcf85354f2dc2bc14d6c6ff705405311ac8"
+  },
+  {
+    "path": "crates/honknet-admin/Cargo.toml",
+    "bytes": 291,
+    "sha256": "da419b6168f7352bbd4a2e6b7907fe0b25f8ca596bb82bffca01b885bd2a1c74"
+  },
+  {
+    "path": "crates/honknet-admin/src/lib.rs",
+    "bytes": 5333,
+    "sha256": "e8a86aedc477d0f980f32c078018426cc4f26ef570630fdbf77a93fb37c01f42"
+  },
+  {
+    "path": "crates/honknet-audio/Cargo.toml",
+    "bytes": 240,
+    "sha256": "a1b18904e7a5ecd4db68f251196784e571361b04289b69457908ebb2037c4cdc"
+  },
+  {
+    "path": "crates/honknet-audio/src/lib.rs",
+    "bytes": 4092,
+    "sha256": "163d895e69453248482347b22b2b667d11bfe4b9ff086f8aab14e31bbd72fe86"
+  },
+  {
+    "path": "crates/honknet-auth/Cargo.toml",
+    "bytes": 335,
+    "sha256": "e9c040e6822972f861f589874d516cb6d880c1b83e8ceec0f00b0ca9aa38ced3"
+  },
+  {
+    "path": "crates/honknet-auth/src/lib.rs",
+    "bytes": 4488,
+    "sha256": "8527ab52abc07a37f97f2909f1c4311ebd077c9381d0beaa3c94be8869045b81"
+  },
+  {
+    "path": "crates/honknet-core/Cargo.toml",
+    "bytes": 203,
+    "sha256": "80cb75733a5fcb961dc56db38d57f87d9dbc326e91f16fda2e09148ad8250083"
+  },
+  {
+    "path": "crates/honknet-core/src/lib.rs",
+    "bytes": 2980,
+    "sha256": "fec3b830d09ae9cedb5308e44ec9bdfc5a1ed2986ec7d40a591f5c2ff517e0d0"
+  },
+  {
+    "path": "crates/honknet-ecs/Cargo.toml",
+    "bytes": 350,
+    "sha256": "d7bb0f4ea6e29e5892b19918166222e1fdae94acdd14886d2ccefdc4e91fe054"
+  },
+  {
+    "path": "crates/honknet-ecs/src/lib.rs",
+    "bytes": 11836,
+    "sha256": "fe2ebdfc9c27f9bf35d20b0e0349d41a7e419a4fcfa4c4e9a8f7f3119e259bff"
+  },
+  {
+    "path": "crates/honknet-events/Cargo.toml",
+    "bytes": 199,
+    "sha256": "581d469ede8b946e945a32d7f4762d2415b12e15be0e28e4db775c2b8f6a4479"
+  },
+  {
+    "path": "crates/honknet-events/src/lib.rs",
+    "bytes": 1346,
+    "sha256": "fdbd430a6bff42de26055462d77d6d49cea63bde8ed4e3f0319219f4915b4af5"
+  },
+  {
+    "path": "crates/honknet-input/Cargo.toml",
+    "bytes": 174,
+    "sha256": "a5ce802d6ffc8d13b91fff1bb99e24d8d9713bb14e7d28e4e8d784ed289789f4"
+  },
+  {
+    "path": "crates/honknet-input/src/lib.rs",
+    "bytes": 3353,
+    "sha256": "47ce21c5e568e92b4293deec5c97d8004def7bb84eafa3e7a626d957fe7c64f6"
+  },
+  {
+    "path": "crates/honknet-localization/Cargo.toml",
+    "bytes": 180,
+    "sha256": "94bf7be8d03275e1088ca03c49c3d8998330528c0114c78c62b143203efac740"
+  },
+  {
+    "path": "crates/honknet-localization/src/lib.rs",
+    "bytes": 2253,
+    "sha256": "8e3b58b688306d243380fe7ba5c97100bca4db3db4f4f18b657618760b110721"
+  },
+  {
+    "path": "crates/honknet-macros/Cargo.toml",
+    "bytes": 225,
+    "sha256": "67bd98d1cea2074d3767b848c5741db3e6e465ae8098af37ed7c7f0c642c1474"
+  },
+  {
+    "path": "crates/honknet-macros/src/lib.rs",
+    "bytes": 1782,
+    "sha256": "f908b678ea8977bdec247183f3fb0ebb724b92d9d516249e13f7e1a50707f37f"
+  },
+  {
+    "path": "crates/honknet-map/Cargo.toml",
+    "bytes": 253,
+    "sha256": "5b9104b847fd5565c599f178b4bc4b43cac386b730c0586afe4cbaf99b504d04"
+  },
+  {
+    "path": "crates/honknet-map/src/lib.rs",
+    "bytes": 5932,
+    "sha256": "c5a16a19d7cbc371d80e5af75903676dec1beb3613646b6c2245972fa445e01b"
+  },
+  {
+    "path": "crates/honknet-math/Cargo.toml",
+    "bytes": 139,
+    "sha256": "1ebab574b59c3ac1b9a3c141912290a742d60d9a69a66d79c6a47ce679161106"
+  },
+  {
+    "path": "crates/honknet-math/src/lib.rs",
+    "bytes": 3784,
+    "sha256": "797ce3699fe63e9fee72aba72bbfbe3ca3a4018df5070ee53264c0366a6bfe0e"
+  },
+  {
+    "path": "crates/honknet-net-core/Cargo.toml",
+    "bytes": 355,
+    "sha256": "58be5f3e704ab2dfc55e5c6b40e415dc6b22d1b74b6481c7d2bc2814a6492856"
+  },
+  {
+    "path": "crates/honknet-net-core/src/lib.rs",
+    "bytes": 6947,
+    "sha256": "4c742a5712cb165e46a96d5649e178a41c3e340c87b6de125633dae43697ca15"
+  },
+  {
+    "path": "crates/honknet-net-transport/Cargo.toml",
+    "bytes": 396,
+    "sha256": "429c76d5c6bc39c79bdbfe42cc24cdc8d8c23bcbba43773f272185627675e423"
+  },
+  {
+    "path": "crates/honknet-net-transport/src/lib.rs",
+    "bytes": 8810,
+    "sha256": "8667bc884334b44cb5c416a8137885454df1a0839b1c39ac803a235fab06919c"
+  },
+  {
+    "path": "crates/honknet-observability/Cargo.toml",
+    "bytes": 281,
+    "sha256": "59ec8d3704a2020ae45f8897bbdfc41066937a53b983b679ee3b93710a5db90e"
+  },
+  {
+    "path": "crates/honknet-observability/src/lib.rs",
+    "bytes": 6485,
+    "sha256": "544f1c9c44c242de5122a57a56d8da48d28ca7d80cf2ee2efbafbdde7971c913"
+  },
+  {
+    "path": "crates/honknet-package/Cargo.toml",
+    "bytes": 267,
+    "sha256": "ecd81f8959692cc0b15ae2fd20bc89a794eceac14b04d0b75fd5e2447b3acbf3"
+  },
+  {
+    "path": "crates/honknet-package/src/lib.rs",
+    "bytes": 4911,
+    "sha256": "8be4bc58fb5e32424ca83aa2354ac7afae36830280274bbca3c4bf8ad31cc31d"
+  },
+  {
+    "path": "crates/honknet-persistence/Cargo.toml",
+    "bytes": 361,
+    "sha256": "9d86b750f0ef6269397b2995e5e55cf19b22ec6c1d51025cabd0e03c55ee7410"
+  },
+  {
+    "path": "crates/honknet-persistence/src/lib.rs",
+    "bytes": 6918,
+    "sha256": "9f4200450565051d8664f08b9b8de6b57c84f3011e8463e4338338146b68e297"
+  },
+  {
+    "path": "crates/honknet-physics/Cargo.toml",
+    "bytes": 306,
+    "sha256": "ce5cf67f6043bbb7f1e685dd2787ad921614aea5795af98669075e70a937ac24"
+  },
+  {
+    "path": "crates/honknet-physics/src/lib.rs",
+    "bytes": 14410,
+    "sha256": "f67aac719c011bb8c8bebfa96892b54873f1c5b7e74d3e7b6aa0ac8fcbaf0415"
+  },
+  {
+    "path": "crates/honknet-prediction/Cargo.toml",
+    "bytes": 255,
+    "sha256": "7955fa0dae0c134d237cf7f728e2727b65c77cba68d24d3999235927389842c9"
+  },
+  {
+    "path": "crates/honknet-prediction/src/lib.rs",
+    "bytes": 3790,
+    "sha256": "87b65a7042baf472a13f8a1ef0a26968a343742c1543f41a8156b02b79531575"
+  },
+  {
+    "path": "crates/honknet-prototypes/Cargo.toml",
+    "bytes": 307,
+    "sha256": "00f0f336e9dac104d7c2ff3d297d991cd06b7f69ffd15b64ade391ebde62ba1f"
+  },
+  {
+    "path": "crates/honknet-prototypes/src/lib.rs",
+    "bytes": 6037,
+    "sha256": "8683bb588d15425f29e3a6121fff30adc0d26794ea80631997caeeef6a0faf87"
+  },
+  {
+    "path": "crates/honknet-reflection/Cargo.toml",
+    "bytes": 226,
+    "sha256": "a30b27d9dd35ce9ca3fecf362c468634dc0e0960a78da88c29f6eba288fcb54e"
+  },
+  {
+    "path": "crates/honknet-reflection/src/lib.rs",
+    "bytes": 1327,
+    "sha256": "0bcfdd038d0b2c07913ee11b2591b5f8254032e3d05f8fc73f7e0ec0063b96f1"
+  },
+  {
+    "path": "crates/honknet-render/Cargo.toml",
+    "bytes": 285,
+    "sha256": "8e1dd94526272e8d10996932d5af43a6c7eadcddf158c3a7348a37eb1c8c835f"
+  },
+  {
+    "path": "crates/honknet-render/src/lib.rs",
+    "bytes": 8757,
+    "sha256": "241aed1bdada3a25d34dd202654fc05a139d8c7cd2e605fd08dd219d1bef5ffa"
+  },
+  {
+    "path": "crates/honknet-render/src/sprite.wgsl",
+    "bytes": 1171,
+    "sha256": "1db004c5fdc393ed19b75115d6f100339b3c9d4df1a302937dfd5bf446d54121"
+  },
+  {
+    "path": "crates/honknet-replay/Cargo.toml",
+    "bytes": 298,
+    "sha256": "a8ace81ff178bc311014197a921804083d8392d7aa16908fc76bdd43c9fbe42a"
+  },
+  {
+    "path": "crates/honknet-replay/src/lib.rs",
+    "bytes": 4632,
+    "sha256": "f61172f472d1329b62bb6d10d2f179f4a8b94216f922ed33c6bc21a10c2a0d71"
+  },
+  {
+    "path": "crates/honknet-replication/Cargo.toml",
+    "bytes": 319,
+    "sha256": "9194b73b353526edc8b511d5fda6938cf5da0714db0acd317a6ac40b6c9624f1"
+  },
+  {
+    "path": "crates/honknet-replication/src/lib.rs",
+    "bytes": 5493,
+    "sha256": "bd349d263d50966ab48760e1c3e13cff5c1d76baaaacc18d346989bc6f5399b2"
+  },
+  {
+    "path": "crates/honknet-resources/Cargo.toml",
+    "bytes": 364,
+    "sha256": "68b3f0ad1e420c62e4c1f29f4bc2e952e38ed909ace52df6269dc981ec835cbc"
+  },
+  {
+    "path": "crates/honknet-resources/src/lib.rs",
+    "bytes": 8368,
+    "sha256": "6ecb082c3218541b6ee85330601bbab056b70aef431beb31f42b9da526c46c45"
+  },
+  {
+    "path": "crates/honknet-scheduler/Cargo.toml",
+    "bytes": 250,
+    "sha256": "d87d983a9c3228629280dc97349ab5b1348eeed24dafb3e775058dfc6027ea2f"
+  },
+  {
+    "path": "crates/honknet-scheduler/src/lib.rs",
+    "bytes": 7001,
+    "sha256": "4b13c6a2104cf141d22b889338f3338a36295c99930c9ea3f6a3aa0764a14893"
+  },
+  {
+    "path": "crates/honknet-sdk/Cargo.toml",
+    "bytes": 606,
+    "sha256": "a0f59245284f1f98d40d7db5c5ec4596c99b18bf44a7246083b9ffc7088ee995"
+  },
+  {
+    "path": "crates/honknet-sdk/src/lib.rs",
+    "bytes": 2095,
+    "sha256": "4fb1aa052197a52cb69a74d5196633cf929fa7ad319c7c2df596974225e2e6de"
+  },
+  {
+    "path": "crates/honknet-serialization/Cargo.toml",
+    "bytes": 235,
+    "sha256": "14bce685576ddda958222726159f28513494512e8c415e547b6e97bd0aaba677"
+  },
+  {
+    "path": "crates/honknet-serialization/src/lib.rs",
+    "bytes": 3067,
+    "sha256": "3ee3361c6e6a38bfe16298b20aba3c245516774c23a890ac034a46db144b6bd1"
+  },
+  {
+    "path": "crates/honknet-spatial/Cargo.toml",
+    "bytes": 236,
+    "sha256": "79944a8343a8d9fe78767456c7507c2f256b79642ad95eb18627bf6f7b04f23f"
+  },
+  {
+    "path": "crates/honknet-spatial/src/lib.rs",
+    "bytes": 2802,
+    "sha256": "bec9b550438f7f7058a215715a1512747d8d425c0f18ef7879a30970471fddb7"
+  },
+  {
+    "path": "crates/honknet-testing/Cargo.toml",
+    "bytes": 468,
+    "sha256": "602b1c996152769b958188037da57aa75f219fe2d6c64c6e3f32a78a70028100"
+  },
+  {
+    "path": "crates/honknet-testing/src/lib.rs",
+    "bytes": 1332,
+    "sha256": "e32ac65304e58ea0b8a7fc0a1694cabbc731bd72af07befdf99287d3375eb082"
+  },
+  {
+    "path": "crates/honknet-transform/Cargo.toml",
+    "bytes": 259,
+    "sha256": "bb5c027c7f4788df7b7db621e33826e71301162fb009103fbe691083e88f9a7a"
+  },
+  {
+    "path": "crates/honknet-transform/src/lib.rs",
+    "bytes": 4789,
+    "sha256": "3a57db7815cf8c316ffc88a61388285346717dcec11bc8426ad71d90e00feb72"
+  },
+  {
+    "path": "crates/honknet-ui/Cargo.toml",
+    "bytes": 237,
+    "sha256": "aa99d4ed4dc0348da139d907229422b1ab2f4b5d74779d5592c52cab688fdf54"
+  },
+  {
+    "path": "crates/honknet-ui/src/lib.rs",
+    "bytes": 8475,
+    "sha256": "c014f7eff6b63046408a8d49e12387c06ed3ef3d6e5f1fabe3982d89c083dba2"
+  },
+  {
+    "path": "crates/honknet-wasm/Cargo.toml",
+    "bytes": 198,
+    "sha256": "fca28449d86cb7be94892169dfbb36b243c7163065bb7d11b223811775c5e039"
+  },
+  {
+    "path": "crates/honknet-wasm/src/lib.rs",
+    "bytes": 2306,
+    "sha256": "4cac1f28228826b6bdc4b92278b2f19eae160516aaa1e6518cf99243abcc2985"
+  },
+  {
+    "path": "deploy/docker-compose.yml",
+    "bytes": 166,
+    "sha256": "ab314d799c676ba80021935c5dcbda6a7348b33fbee1bddc9dde2d7cd9bef73d"
+  },
+  {
+    "path": "deploy/honknet-server.service",
+    "bytes": 319,
+    "sha256": "36a4c953b2bf840847f96849699b4a15fed40cbeda0119a221d112480bd60c48"
+  },
+  {
+    "path": "deploy/nginx.conf",
+    "bytes": 283,
+    "sha256": "57bb60fff7b037f7cc38683290f52151b7c59a5898ab0cd98565f69113e7fcf2"
+  },
+  {
+    "path": "docs/ARCHITECTURE.md",
+    "bytes": 342,
+    "sha256": "2ea0d91dd2354b3b01f4f8ca9ef099983f3ca4c33b59e53619098095e47d8314"
+  },
+  {
+    "path": "docs/RELEASE_GATES.md",
+    "bytes": 442,
+    "sha256": "a5c7ad39847603ddb67ca208b04be2451ff64c5dc66e2827a735d2a01e0d826f"
+  },
+  {
+    "path": "docs/TESTING_EN.md",
+    "bytes": 188,
+    "sha256": "b7b94aea467b52e7e61c5abf659273168b3b8e0f02fdc399080029cb97593e73"
+  },
+  {
+    "path": "docs/TESTING_RU.md",
+    "bytes": 863,
+    "sha256": "c3ed53c03c87845c6c0a2888e246152493982d76398ac25a0660371495558a4d"
+  },
+  {
+    "path": "integration-tests/Cargo.toml",
+    "bytes": 332,
+    "sha256": "caa342701544baf6589f70fd40132a3e25535947e0605569d9086260ec59c5fa"
+  },
+  {
+    "path": "integration-tests/src/lib.rs",
+    "bytes": 225,
+    "sha256": "313ba981282d8bbeaebbdd39f42c7a0e13f86696e9a8f1d232083986d3523582"
+  },
+  {
+    "path": "package.json",
+    "bytes": 516,
+    "sha256": "6ea9a771b7784696b529c76d95b30052dd0b79b62d133dec66b28e0218d303f1"
+  },
+  {
+    "path": "run-demo.sh",
+    "bytes": 242,
+    "sha256": "09916b92ad94c27909d044b59099d6e85f6fec620b87eeec14e4b59bd99123da"
+  },
+  {
+    "path": "rust-toolchain.toml",
+    "bytes": 86,
+    "sha256": "4330f7cb643b4c9fdbe09a91a5dd3e8238219df355db83eca1b95fb00dc724f6"
+  },
+  {
+    "path": "rustfmt.toml",
+    "bytes": 89,
+    "sha256": "1b9b7d79c3262b9b83699ac25f4ecacde3082522be4793d9ecd28ee267ed3971"
+  },
+  {
+    "path": "templates/headless-simulation/content/prototypes/base.yml",
+    "bytes": 277,
+    "sha256": "221634ea9059be1da2412e877c5c7d604137b293c1ea99ad0f69b38fd5132e58"
+  },
+  {
+    "path": "templates/headless-simulation/content/ui/main.hui.yml",
+    "bytes": 108,
+    "sha256": "285fdcb80bfd3f00acef854c52c681a54661c66e61b8a2d04d90d5a82f392476"
+  },
+  {
+    "path": "templates/headless-simulation/game.toml",
+    "bytes": 221,
+    "sha256": "9e9915417b713ad6dcb6a9c17a011bf58dbab2850ab8c8636e1c154550284a34"
+  },
+  {
+    "path": "templates/headless-simulation/localization/en-US/main.ftl",
+    "bytes": 37,
+    "sha256": "265c125b1e75e99a187f15a13b518af0c8db5edb9f7cffed9237f12583487b7b"
+  },
+  {
+    "path": "templates/headless-simulation/maps/test.yml",
+    "bytes": 91,
+    "sha256": "6bd11a3ac1cf514802e4c0e208731ea8126900b6d8a31191d05272b605b67d0d"
+  },
+  {
+    "path": "templates/headless-simulation/src/lib.rs",
+    "bytes": 288,
+    "sha256": "eed4c030e021730b85543b80e88987b8b553092c20572900353381e9e4065045"
+  },
+  {
+    "path": "templates/multiplayer/content/prototypes/base.yml",
+    "bytes": 277,
+    "sha256": "221634ea9059be1da2412e877c5c7d604137b293c1ea99ad0f69b38fd5132e58"
+  },
+  {
+    "path": "templates/multiplayer/content/ui/main.hui.yml",
+    "bytes": 108,
+    "sha256": "285fdcb80bfd3f00acef854c52c681a54661c66e61b8a2d04d90d5a82f392476"
+  },
+  {
+    "path": "templates/multiplayer/game.toml",
+    "bytes": 224,
+    "sha256": "707283a29e32e4ff7b43931c18edba63a4ed7a7891493e54e4c64c42706adf35"
+  },
+  {
+    "path": "templates/multiplayer/localization/en-US/main.ftl",
+    "bytes": 37,
+    "sha256": "265c125b1e75e99a187f15a13b518af0c8db5edb9f7cffed9237f12583487b7b"
+  },
+  {
+    "path": "templates/multiplayer/maps/test.yml",
+    "bytes": 91,
+    "sha256": "6bd11a3ac1cf514802e4c0e208731ea8126900b6d8a31191d05272b605b67d0d"
+  },
+  {
+    "path": "templates/multiplayer/src/lib.rs",
+    "bytes": 288,
+    "sha256": "eed4c030e021730b85543b80e88987b8b553092c20572900353381e9e4065045"
+  },
+  {
+    "path": "templates/persistent-world/content/prototypes/base.yml",
+    "bytes": 277,
+    "sha256": "221634ea9059be1da2412e877c5c7d604137b293c1ea99ad0f69b38fd5132e58"
+  },
+  {
+    "path": "templates/persistent-world/content/ui/main.hui.yml",
+    "bytes": 108,
+    "sha256": "285fdcb80bfd3f00acef854c52c681a54661c66e61b8a2d04d90d5a82f392476"
+  },
+  {
+    "path": "templates/persistent-world/game.toml",
+    "bytes": 229,
+    "sha256": "f511a0dc08268b39b1e9a3eab0cbc14467fc07af123796e73f81523c199068fc"
+  },
+  {
+    "path": "templates/persistent-world/localization/en-US/main.ftl",
+    "bytes": 37,
+    "sha256": "265c125b1e75e99a187f15a13b518af0c8db5edb9f7cffed9237f12583487b7b"
+  },
+  {
+    "path": "templates/persistent-world/maps/test.yml",
+    "bytes": 91,
+    "sha256": "6bd11a3ac1cf514802e4c0e208731ea8126900b6d8a31191d05272b605b67d0d"
+  },
+  {
+    "path": "templates/persistent-world/src/lib.rs",
+    "bytes": 288,
+    "sha256": "eed4c030e021730b85543b80e88987b8b553092c20572900353381e9e4065045"
+  },
+  {
+    "path": "templates/singleplayer/content/prototypes/base.yml",
+    "bytes": 277,
+    "sha256": "221634ea9059be1da2412e877c5c7d604137b293c1ea99ad0f69b38fd5132e58"
+  },
+  {
+    "path": "templates/singleplayer/content/ui/main.hui.yml",
+    "bytes": 108,
+    "sha256": "285fdcb80bfd3f00acef854c52c681a54661c66e61b8a2d04d90d5a82f392476"
+  },
+  {
+    "path": "templates/singleplayer/game.toml",
+    "bytes": 227,
+    "sha256": "93e19234170d25d9e4261dd77cff82bcaeb8d19715b4839933260899b1829c5e"
+  },
+  {
+    "path": "templates/singleplayer/localization/en-US/main.ftl",
+    "bytes": 37,
+    "sha256": "265c125b1e75e99a187f15a13b518af0c8db5edb9f7cffed9237f12583487b7b"
+  },
+  {
+    "path": "templates/singleplayer/maps/test.yml",
+    "bytes": 91,
+    "sha256": "6bd11a3ac1cf514802e4c0e208731ea8126900b6d8a31191d05272b605b67d0d"
+  },
+  {
+    "path": "templates/singleplayer/src/lib.rs",
+    "bytes": 288,
+    "sha256": "eed4c030e021730b85543b80e88987b8b553092c20572900353381e9e4065045"
+  },
+  {
+    "path": "tools/source_audit.py",
+    "bytes": 2493,
+    "sha256": "a35da770b449310e88565b2c3ee67c31d719e19207b79cb0048e2d03f996c197"
+  },
+  {
+    "path": "verify.ps1",
+    "bytes": 337,
+    "sha256": "1e08794890c198ce40abf86da19a2a1c5d20798fa8960571266f46698791acb9"
+  },
+  {
+    "path": "verify.sh",
+    "bytes": 395,
+    "sha256": "68ce5d91916c61dc2de62bc62a785c3cf1eecf5d94f220145197b2b924c4d9e4"
+  }
+]

@@ -1,0 +1,15 @@
+{
+  "name": "@honknet/web-shell",
+  "private": true,
+  "version": "1.0.0-rc.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vite": "^6.0.0"
+  }
+}

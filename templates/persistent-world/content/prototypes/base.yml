@@ -1,0 +1,20 @@
+type: entity
+id: ExampleCharacter
+components:
+  Transform: {}
+  PhysicsBody:
+    body_type: Dynamic
+---
+type: entity
+id: ExampleDoor
+components:
+  Transform: {}
+  Door:
+    open: false
+---
+type: entity
+id: ExampleItem
+components:
+  Transform: {}
+  Item:
+    name: Example item

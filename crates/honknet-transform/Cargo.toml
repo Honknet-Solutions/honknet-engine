@@ -1,0 +1,12 @@
+[package]
+name="honknet-transform"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-core = { path = "../honknet-core" }
+honknet-math = { path = "../honknet-math" }
+serde.workspace = true
+thiserror.workspace = true
+

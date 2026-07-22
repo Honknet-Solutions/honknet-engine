@@ -1,0 +1,8 @@
+services:
+  server:
+    build: ..
+    ports: ["3015:3015/udp"]
+    volumes: ["honknet-data:/var/lib/honknet"]
+    restart: unless-stopped
+volumes:
+  honknet-data: {}

@@ -1,0 +1,12 @@
+[package]
+name = "honknet-scheduler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+honknet-ecs = { path = "../honknet-ecs" }
+rayon.workspace = true
+parking_lot.workspace = true
+thiserror.workspace = true
+

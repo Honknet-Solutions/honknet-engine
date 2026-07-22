@@ -1,0 +1,16 @@
+[package]
+name="honknet-testing"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-core = { path = "../honknet-core" }
+honknet-ecs = { path = "../honknet-ecs" }
+honknet-net-transport = { path = "../honknet-net-transport" }
+honknet-net-core = { path = "../honknet-net-core" }
+honknet-prediction = { path = "../honknet-prediction" }
+honknet-replay = { path = "../honknet-replay" }
+tokio.workspace = true
+sha2.workspace = true
+

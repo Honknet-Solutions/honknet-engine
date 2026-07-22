@@ -1,0 +1,15 @@
+[package]
+name="honknet-headless-client"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+serde.workspace = true
+honknet-math = { path = "../../crates/honknet-math" }
+honknet-net-core = { path = "../../crates/honknet-net-core" }
+honknet-net-transport = { path = "../../crates/honknet-net-transport" }
+

@@ -1,9 +1,0 @@
-.git
-.github
-node_modules
-**/node_modules
-**/dist
-target
-data/saves
-.honknet-backups
-*.zip

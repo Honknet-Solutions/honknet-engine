@@ -1,9 +1,0 @@
-map:
-  id: empty
-  grids:
-    - id: main
-      chunks:
-        - position: [0, 0]
-          tiles:
-            - [floor]
-  entities: []

@@ -1,48 +1,99 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/server",
-    "crates/honknet-core",
-    "crates/honknet-protocol",
-    "crates/honknet-content",
-    "crates/honknet-assets",
-    "crates/honknet-script",
-    "crates/honknet-persistence",
-    "crates/honknet-admin",
-    "crates/honknet-benchmarks",
+  "crates/honknet-core",
+  "crates/honknet-macros",
+  "crates/honknet-reflection",
+  "crates/honknet-serialization",
+  "crates/honknet-events",
+  "crates/honknet-ecs",
+  "crates/honknet-scheduler",
+  "crates/honknet-math",
+  "crates/honknet-transform",
+  "crates/honknet-spatial",
+  "crates/honknet-map",
+  "crates/honknet-physics",
+  "crates/honknet-net-core",
+  "crates/honknet-net-transport",
+  "crates/honknet-replication",
+  "crates/honknet-prediction",
+  "crates/honknet-render",
+  "crates/honknet-ui",
+  "crates/honknet-audio",
+  "crates/honknet-resources",
+  "crates/honknet-prototypes",
+  "crates/honknet-localization",
+  "crates/honknet-persistence",
+  "crates/honknet-replay",
+  "crates/honknet-auth",
+  "crates/honknet-admin",
+  "crates/honknet-observability",
+  "crates/honknet-wasm",
+  "crates/honknet-sdk",
+  "crates/honknet-testing",
+  "crates/honknet-input",
+  "crates/honknet-package",
+  "apps/honknet-server",
+  "apps/honknet-client",
+  "apps/honknet-web",
+  "apps/honknet-headless-client",
+  "apps/honknet-cli",
+  "integration-tests",
+  "benchmarks",
 ]
 
 [workspace.package]
+version = "1.0.0-rc.1"
 edition = "2021"
 license = "Apache-2.0"
 authors = ["Honknet Solutions"]
 repository = "https://github.com/Honknet-Solutions/honknet-engine"
-version = "0.2.0-rc.1"
+rust-version = "1.85"
 
 [workspace.dependencies]
-anyhow = "1"
+anyhow = "1.0"
+async-trait = "0.1"
+bincode = { version = "2.0", features = ["serde"] }
+bitflags = { version = "2.6", features = ["serde"] }
+bytes = "1.9"
+clap = { version = "4.5", features = ["derive"] }
+crc32fast = "1.4"
+dashmap = "6.1"
+flate2 = "1.0"
 futures-util = "0.3"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+hex = "0.4"
+hmac = "0.12"
+notify = "7.0"
+parking_lot = "0.12"
+prometheus = "0.13"
+quinn = "0.11"
+rand = { version = "0.9", features = ["small_rng"] }
+rayon = "1.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+rodio = "0.20"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 serde_yaml = "0.9"
-tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.24"
-tracing = "0.1"
-tracing-subscriber = "0.3"
-uuid = { version = "1", features = ["v4", "serde"] }
-thiserror = "2"
+semver = { version = "1.0", features = ["serde"] }
 sha2 = "0.10"
-walkdir = "2"
+smallvec = { version = "1.13", features = ["serde"] }
+thiserror = "2.0"
+tokio = { version = "1.43", features = ["full"] }
+tokio-tungstenite = "0.26"
 toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+walkdir = "2.5"
+wasmtime = "29"
+wgpu = "24"
+winit = "0.30"
+zip = "2.2"
+zstd = "0.13"
 
 [profile.release]
-opt-level = 3
 lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
-
-[profile.bench]
-inherits = "release"
-debug = 1
-strip = "none"

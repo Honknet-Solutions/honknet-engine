@@ -1,0 +1,12 @@
+[package]
+name="honknet-audio"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-math = { path = "../honknet-math" }
+rodio.workspace = true
+parking_lot.workspace = true
+thiserror.workspace = true
+

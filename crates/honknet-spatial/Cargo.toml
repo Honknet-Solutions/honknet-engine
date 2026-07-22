@@ -1,0 +1,11 @@
+[package]
+name="honknet-spatial"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-core = { path = "../honknet-core" }
+honknet-math = { path = "../honknet-math" }
+parking_lot.workspace = true
+
