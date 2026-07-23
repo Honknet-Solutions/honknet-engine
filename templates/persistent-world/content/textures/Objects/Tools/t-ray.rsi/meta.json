@@ -1,0 +1,10 @@
+{
+	"version": 1,
+  "license": "CC-BY-SA-4.0",
+  "copyright": "Made by WWDP Team",
+	"size": { "x": 32, "y": 32 },
+	"states": [
+		{ "name": "tray-on" , "delays": [[0.1, 1.0]]},
+		{ "name": "tray-off" }
+	]
+}
