@@ -6,3 +6,4 @@
 .honknet-cache
 .honknet-data
 .agent
+apps/honknet-studio/node_modules
