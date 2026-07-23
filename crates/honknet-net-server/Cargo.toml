@@ -1,0 +1,11 @@
+[package]
+name = "honknet-net-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+honknet-net-core = { path = "../honknet-net-core" }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tracing = { workspace = true }

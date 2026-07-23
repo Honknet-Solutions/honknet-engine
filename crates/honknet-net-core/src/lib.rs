@@ -28,9 +28,11 @@ bitflags! {
 pub struct ClientHelloPayload {
     pub protocol_version: u16,
     pub engine_version: String,
-    pub content_hash: String,
-    pub client_id: u64,
+    pub content_version: String,
+    pub content_manifest_hash: String,
+    pub supported_compression: Vec<String>,
     pub auth_token: Option<String>,
+    pub reconnect_token: Option<String>,
 }
 
 impl NetworkMessage for ClientHelloPayload {
@@ -40,6 +42,11 @@ impl NetworkMessage for ClientHelloPayload {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ServerWelcomePayload {
     pub protocol_version: u16,
+    pub engine_version: String,
+    pub content_version: String,
+    pub content_manifest_hash: String,
+    pub auth_token: Option<String>,
+    pub reconnect_token: Option<String>,
     pub server_tick: u64,
     pub peer_id: u64,
     pub tick_rate: u32,
@@ -48,6 +55,21 @@ pub struct ServerWelcomePayload {
 
 impl NetworkMessage for ServerWelcomePayload {
     const ID: u16 = 101;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum ConnectionState {
+    Disconnected,
+    TransportConnecting,
+    ProtocolHello,
+    ProtocolNegotiation,
+    Authenticating,
+    LoadingManifest,
+    SynchronizingWorld,
+    Active,
+    Reconnecting,
+    Closed,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -131,6 +153,12 @@ pub enum ProtocolError {
     Codec(String),
     #[error("decompression limit exceeded")]
     DecompressionLimit,
+    #[error("payload too large")]
+    PayloadTooLarge,
+    #[error("fragment limit exceeded")]
+    FragmentLimitExceeded,
+    #[error("rate limit exceeded")]
+    RateLimitExceeded,
 }
 
 pub const fn const_message_id(name: &str) -> u16 {
@@ -168,11 +196,17 @@ pub fn decode_message<T: NetworkMessage>(
     compressed: bool,
     limit: usize,
 ) -> Result<T, ProtocolError> {
+    if bytes.len() > limit {
+        return Err(ProtocolError::PayloadTooLarge);
+    }
     let raw = if compressed {
         zstd::bulk::decompress(bytes, limit).map_err(|_| ProtocolError::DecompressionLimit)?
     } else {
         bytes.to_vec()
     };
+    if raw.len() > limit {
+        return Err(ProtocolError::PayloadTooLarge);
+    }
     let (v, _) = bincode::serde::decode_from_slice(&raw, bincode::config::standard())
         .map_err(|e| ProtocolError::Codec(e.to_string()))?;
     Ok(v)
@@ -248,33 +282,136 @@ pub fn fragment(
         .collect()
 }
 
-#[derive(Default)]
+pub struct FragmentSet {
+    pub fragments: Vec<Option<Vec<u8>>>,
+    pub received_count: usize,
+    pub total_size: usize,
+    pub last_updated: std::time::Instant,
+}
+
 pub struct FragmentAssembler {
-    sets: std::collections::HashMap<(u32, u16), Vec<Option<Vec<u8>>>>,
+    pub sets: std::collections::HashMap<(u32, u16), FragmentSet>,
+    pub max_concurrent_sets: usize,
+    pub max_fragments: u16,
+    pub memory_budget: usize,
+    pub current_memory: usize,
+    pub timeout: std::time::Duration,
+}
+
+impl Default for FragmentAssembler {
+    fn default() -> Self {
+        Self {
+            sets: std::collections::HashMap::new(),
+            max_concurrent_sets: 64,
+            max_fragments: 256,
+            memory_budget: 1024 * 1024 * 8, // 8MB
+            current_memory: 0,
+            timeout: std::time::Duration::from_secs(5),
+        }
+    }
 }
 
 impl FragmentAssembler {
-    pub fn push(&mut self, h: Header, payload: &[u8]) -> Option<Vec<u8>> {
+    pub fn push(&mut self, h: Header, payload: &[u8]) -> Result<Option<Vec<u8>>, ProtocolError> {
         if !h.flags.contains(PacketFlags::FRAGMENT) {
-            return Some(payload.to_vec());
+            return Ok(Some(payload.to_vec()));
         }
+        if h.fragment_count > self.max_fragments {
+            return Err(ProtocolError::FragmentLimitExceeded);
+        }
+
+        let now = std::time::Instant::now();
+        self.cleanup(now);
+
         let key = (h.sequence, h.fragment_id);
-        let v = self
-            .sets
-            .entry(key)
-            .or_insert_with(|| vec![None; h.fragment_count as usize]);
-        if let Some(slot) = v.get_mut(h.fragment_index as usize) {
-            *slot = Some(payload.to_vec())
-        }
-        if v.iter().all(Option::is_some) {
-            let mut out = vec![];
-            for x in v.iter_mut() {
-                out.extend(x.take().unwrap())
+
+        if !self.sets.contains_key(&key) {
+            if self.sets.len() >= self.max_concurrent_sets {
+                return Err(ProtocolError::FragmentLimitExceeded);
             }
+            if self.current_memory + payload.len() > self.memory_budget {
+                return Err(ProtocolError::FragmentLimitExceeded);
+            }
+            self.sets.insert(
+                key,
+                FragmentSet {
+                    fragments: vec![None; h.fragment_count as usize],
+                    received_count: 0,
+                    total_size: 0,
+                    last_updated: now,
+                },
+            );
+        }
+
+        let set = self.sets.get_mut(&key).unwrap();
+        set.last_updated = now;
+
+        if let Some(slot) = set.fragments.get_mut(h.fragment_index as usize) {
+            if slot.is_none() {
+                if self.current_memory + payload.len() > self.memory_budget {
+                    return Err(ProtocolError::FragmentLimitExceeded);
+                }
+                *slot = Some(payload.to_vec());
+                set.received_count += 1;
+                set.total_size += payload.len();
+                self.current_memory += payload.len();
+            }
+        }
+
+        if set.received_count == h.fragment_count as usize {
+            let mut out = Vec::with_capacity(set.total_size);
+            for x in &mut set.fragments {
+                out.extend(x.take().unwrap());
+            }
+            self.current_memory -= set.total_size;
             self.sets.remove(&key);
-            Some(out)
+            Ok(Some(out))
         } else {
-            None
+            Ok(None)
+        }
+    }
+
+    pub fn cleanup(&mut self, now: std::time::Instant) {
+        let timeout = self.timeout;
+        self.sets.retain(|_, set| {
+            if now.duration_since(set.last_updated) > timeout {
+                self.current_memory -= set.total_size;
+                false
+            } else {
+                true
+            }
+        });
+    }
+}
+
+pub struct RateLimiter {
+    pub last_requests: std::collections::VecDeque<std::time::Instant>,
+    pub max_requests: usize,
+    pub window: std::time::Duration,
+}
+
+impl RateLimiter {
+    pub fn new(max_requests: usize, window: std::time::Duration) -> Self {
+        Self {
+            last_requests: std::collections::VecDeque::with_capacity(max_requests),
+            max_requests,
+            window,
+        }
+    }
+    pub fn check(&mut self) -> Result<(), ProtocolError> {
+        let now = std::time::Instant::now();
+        while let Some(&t) = self.last_requests.front() {
+            if now.duration_since(t) > self.window {
+                self.last_requests.pop_front();
+            } else {
+                break;
+            }
+        }
+        if self.last_requests.len() >= self.max_requests {
+            Err(ProtocolError::RateLimitExceeded)
+        } else {
+            self.last_requests.push_back(now);
+            Ok(())
         }
     }
 }

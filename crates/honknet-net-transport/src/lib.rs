@@ -132,7 +132,7 @@ impl UdpTransport {
             state.last_seen = Instant::now();
             state.sent.retain(|seq, _| !acked(*seq, h.ack, h.ack_bits));
             update_ack(&mut state.recv_latest, &mut state.recv_bits, h.sequence);
-            if let Some(full) = state.assembler.push(h, payload) {
+            if let Ok(Some(full)) = state.assembler.push(h, payload) {
                 self.events
                     .lock()
                     .push_back(TransportEvent::Data(peer, h.channel, h.kind, full));

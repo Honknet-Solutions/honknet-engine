@@ -3,35 +3,89 @@ use honknet_math::Vec2;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+
+pub type ComponentNetId = u16;
+pub type SchemaVersion = u32;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldSchema {
+    pub name: String,
+    pub field_type: String,
+    pub offset: usize,
+    pub size: usize,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ReplicationMode {
-    All,
-    Owner,
-    Observers,
+    Replicated,
+    OwnerOnly,
+    ObserverOnly,
     ServerOnly,
     InitialOnly,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComponentState {
-    pub component_id: u16,
-    pub revision: u64,
-    pub dirty_mask: Vec<u64>,
-    pub bytes: Vec<u8>,
-    pub mode: ReplicationMode,
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum InterpolationPolicy {
+    Linear,
+    SphericalLinear,
+    Step,
+    None,
 }
 
-impl ComponentState {
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PredictionPolicy {
+    Authoritative,
+    Predictive,
+    Local,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum PersistencePolicy {
+    Persistent,
+    Transient,
+    Session,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkComponentDescriptor {
+    pub net_id: ComponentNetId,
+    pub name: String,
+    pub version: SchemaVersion,
+    pub mode: ReplicationMode,
+    pub interpolation: InterpolationPolicy,
+    pub prediction: PredictionPolicy,
+    pub persistence: PersistencePolicy,
+    pub fields: Vec<FieldSchema>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DirtyMask {
+    pub mask: Vec<u64>,
+}
+
+impl DirtyMask {
+    pub fn new() -> Self {
+        Self { mask: Vec::new() }
+    }
     pub fn mark(&mut self, field: usize) {
         let word = field / 64;
-        if self.dirty_mask.len() <= word {
-            self.dirty_mask.resize(word + 1, 0)
+        if self.mask.len() <= word {
+            self.mask.resize(word + 1, 0)
         }
-        self.dirty_mask[word] |= 1 << (field % 64)
+        self.mask[word] |= 1 << (field % 64)
     }
     pub fn clean(&mut self) {
-        self.dirty_mask.fill(0)
+        self.mask.fill(0)
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentState {
+    pub component_id: ComponentNetId,
+    pub revision: u64,
+    pub dirty_mask: DirtyMask,
+    pub bytes: Vec<u8>,
+    pub mode: ReplicationMode,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +114,68 @@ pub struct Delta {
     pub despawns: Vec<Entity>,
 }
 
+pub struct SnapshotBuilder {
+    pub tick: u64,
+    pub entities: Vec<EntityState>,
+}
+
+impl SnapshotBuilder {
+    pub fn new(tick: u64) -> Self {
+        Self {
+            tick,
+            entities: Vec::new(),
+        }
+    }
+    pub fn add(&mut self, state: EntityState) {
+        self.entities.push(state);
+    }
+    pub fn build(self) -> Snapshot {
+        Snapshot {
+            tick: self.tick,
+            entities: self.entities,
+        }
+    }
+}
+
+pub struct DeltaBuilder {
+    pub tick: u64,
+    pub baseline: u64,
+    pub spawns: Vec<EntityState>,
+    pub updates: Vec<EntityState>,
+    pub despawns: Vec<Entity>,
+}
+
+impl DeltaBuilder {
+    pub fn new(tick: u64, baseline: u64) -> Self {
+        Self {
+            tick,
+            baseline,
+            spawns: vec![],
+            updates: vec![],
+            despawns: vec![],
+        }
+    }
+    pub fn build(self) -> Delta {
+        Delta {
+            tick: self.tick,
+            baseline: self.baseline,
+            spawns: self.spawns,
+            updates: self.updates,
+            despawns: self.despawns,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PerClientBudget {
+    pub bytes_per_tick: usize,
+    pub bytes_per_second: usize,
+    pub reliable_reserve: usize,
+    pub spawn_reserve: usize,
+    pub critical_reserve: usize,
+    pub cosmetic_budget: usize,
+}
+
 pub struct InterestContext {
     pub client: u64,
     pub controlled: Option<Entity>,
@@ -67,6 +183,7 @@ pub struct InterestContext {
     pub observers: HashSet<Entity>,
     pub forced: HashSet<Entity>,
     pub teams: HashSet<u64>,
+    pub containers: HashSet<Entity>,
 }
 
 pub trait InterestProvider: Send + Sync {
@@ -90,10 +207,24 @@ impl InterestProvider for OwnershipProvider {
     }
 }
 
-pub struct ForcedProvider;
-impl InterestProvider for ForcedProvider {
+pub struct ObserverProvider;
+impl InterestProvider for ObserverProvider {
     fn interested(&self, c: &InterestContext, e: &EntityState) -> bool {
-        c.forced.contains(&e.entity) || c.observers.contains(&e.entity)
+        c.observers.contains(&e.entity)
+    }
+}
+
+pub struct ForcedVisibilityProvider;
+impl InterestProvider for ForcedVisibilityProvider {
+    fn interested(&self, c: &InterestContext, e: &EntityState) -> bool {
+        c.forced.contains(&e.entity)
+    }
+}
+
+pub struct ContainerProvider;
+impl InterestProvider for ContainerProvider {
+    fn interested(&self, c: &InterestContext, e: &EntityState) -> bool {
+        c.containers.contains(&e.entity)
     }
 }
 

@@ -6,6 +6,31 @@ use std::{
     collections::{BinaryHeap, HashMap, HashSet},
 };
 use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ColliderId {
+    pub map_id: u32,
+    pub grid_id: u32,
+    pub chunk_x: i32,
+    pub chunk_y: i32,
+    pub generation: u64,
+}
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct DirtyChunkQueue {
+    pub queue: Vec<ColliderId>,
+}
+
+impl DirtyChunkQueue {
+    pub fn push(&mut self, id: ColliderId) {
+        if !self.queue.contains(&id) {
+            self.queue.push(id);
+        }
+    }
+    pub fn pop(&mut self) -> Option<ColliderId> {
+        self.queue.pop()
+    }
+}
 pub const CHUNK_SIZE: i32 = 32;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TileDef {
@@ -59,6 +84,7 @@ pub struct Map {
     pub grids: HashMap<Entity, Grid>,
     pub metadata: HashMap<String, String>,
     pub streaming_regions: Vec<Aabb>,
+    pub dirty_chunks: DirtyChunkQueue,
 }
 
 #[derive(Debug, Error)]
@@ -91,7 +117,74 @@ impl Map {
         c.occlusion_dirty = true;
         c.nav_dirty = true;
         g.revision += 1;
+        self.dirty_chunks.push(ColliderId {
+            map_id: self.id,
+            grid_id: grid.index,
+            chunk_x: cx,
+            chunk_y: cy,
+            generation: c.revision,
+        });
         Ok(old)
+    }
+    pub fn build_chunk_colliders(&self, grid: Entity, cx: i32, cy: i32) -> Vec<Aabb> {
+        let mut colliders = vec![];
+        let Some(g) = self.grids.get(&grid) else {
+            return colliders;
+        };
+        let Some(chunk) = g.chunks.get(&(cx, cy)) else {
+            return colliders;
+        };
+
+        let mut solid = vec![false; (CHUNK_SIZE * CHUNK_SIZE) as usize];
+        for (i, &t) in chunk.tiles.iter().enumerate() {
+            if let Some(def) = self.tiles.get(t as usize) {
+                solid[i] = def.solid;
+            }
+        }
+
+        let mut visited = vec![false; (CHUNK_SIZE * CHUNK_SIZE) as usize];
+
+        for y in 0..CHUNK_SIZE {
+            for x in 0..CHUNK_SIZE {
+                let idx = Chunk::idx(x, y);
+                if solid[idx] && !visited[idx] {
+                    let mut w = 1;
+                    while x + w < CHUNK_SIZE
+                        && solid[Chunk::idx(x + w, y)]
+                        && !visited[Chunk::idx(x + w, y)]
+                    {
+                        w += 1;
+                    }
+                    let mut h = 1;
+                    let mut can_expand_y = true;
+                    while y + h < CHUNK_SIZE && can_expand_y {
+                        for ix in x..x + w {
+                            if !solid[Chunk::idx(ix, y + h)] || visited[Chunk::idx(ix, y + h)] {
+                                can_expand_y = false;
+                                break;
+                            }
+                        }
+                        if can_expand_y {
+                            h += 1;
+                        }
+                    }
+                    for iy in y..y + h {
+                        for ix in x..x + w {
+                            visited[Chunk::idx(ix, iy)] = true;
+                        }
+                    }
+                    let min_x = (cx * CHUNK_SIZE + x) as f32 * self.tile_size;
+                    let min_y = (cy * CHUNK_SIZE + y) as f32 * self.tile_size;
+                    let max_x = (cx * CHUNK_SIZE + x + w) as f32 * self.tile_size;
+                    let max_y = (cy * CHUNK_SIZE + y + h) as f32 * self.tile_size;
+                    colliders.push(Aabb {
+                        min: Vec2::new(min_x, min_y),
+                        max: Vec2::new(max_x, max_y),
+                    });
+                }
+            }
+        }
+        colliders
     }
     pub fn tile(&self, grid: Entity, x: i32, y: i32) -> Option<&TileDef> {
         let g = self.grids.get(&grid)?;

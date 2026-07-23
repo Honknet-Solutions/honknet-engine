@@ -43,12 +43,23 @@ pub enum EngineRuntimeState {
     Failed,
 }
 
+#[derive(Debug, Clone)]
+pub struct TickContext {
+    pub current_tick: u64,
+    pub delta_time: f32,
+    pub fixed_timestep: f32,
+    pub runtime_state: EngineRuntimeState,
+    pub deterministic_seed: u64,
+}
+
 pub struct EngineRuntimeConfig {
     pub tick_rate: u32,
     pub listen_address: String,
     pub persistence_path: Option<PathBuf>,
     pub replay_path: Option<PathBuf>,
-    pub auth_secret: String,
+    pub auth_signing_key: Vec<u8>,
+    pub session_key: Vec<u8>,
+    pub reconnect_key: Vec<u8>,
 }
 
 impl Default for EngineRuntimeConfig {
@@ -58,7 +69,9 @@ impl Default for EngineRuntimeConfig {
             listen_address: "127.0.0.1:3015".to_string(),
             persistence_path: None,
             replay_path: None,
-            auth_secret: "honknet-secret-change-in-production".to_string(),
+            auth_signing_key: vec![],
+            session_key: vec![],
+            reconnect_key: vec![],
         }
     }
 }
@@ -83,6 +96,8 @@ pub struct EngineRuntime {
     pub config: EngineRuntimeConfig,
     pub players: HashMap<u64, Entity>,
     pub client_baselines: HashMap<u64, u64>,
+    pub current_tick: u64,
+    pub deterministic_seed: u64,
 }
 
 impl EngineRuntime {
@@ -98,6 +113,7 @@ impl EngineRuntime {
             grids: HashMap::new(),
             metadata: HashMap::new(),
             streaming_regions: vec![],
+            dirty_chunks: honknet_map::DirtyChunkQueue::default(),
         };
         let vfs = Vfs::default();
         let prototypes = PrototypeManager::default();
@@ -114,7 +130,7 @@ impl EngineRuntime {
             .as_ref()
             .map(|p| FileBackend::new(p, 3));
 
-        let auth = TokenIssuer::new(config.auth_secret.as_bytes());
+        let auth = TokenIssuer::new(&config.auth_signing_key);
         let admin = AdminConsole::default();
         let metrics = Metrics::new();
         let health = HealthState::default();
@@ -134,7 +150,7 @@ impl EngineRuntime {
         };
 
         Ok(Self {
-            state: EngineRuntimeState::Running,
+            state: EngineRuntimeState::Initializing,
             world,
             scheduler,
             event_bus,
@@ -153,6 +169,8 @@ impl EngineRuntime {
             config,
             players: HashMap::new(),
             client_baselines: HashMap::new(),
+            current_tick: 0,
+            deterministic_seed: 1337,
         })
     }
 
@@ -160,7 +178,40 @@ impl EngineRuntime {
         self.scheduler.add(system);
     }
 
+    pub fn initialize(&mut self) {
+        self.state = EngineRuntimeState::Initializing;
+    }
+    pub fn load_content(&mut self) {
+        self.state = EngineRuntimeState::LoadingContent;
+    }
+    pub fn ready(&mut self) {
+        self.state = EngineRuntimeState::Ready;
+    }
+    pub fn start(&mut self) {
+        self.state = EngineRuntimeState::Running;
+    }
+    pub fn pause(&mut self) {
+        self.state = EngineRuntimeState::Paused;
+    }
+    pub fn resume(&mut self) {
+        self.state = EngineRuntimeState::Running;
+    }
+    pub fn shutdown(&mut self) {
+        self.state = EngineRuntimeState::ShuttingDown;
+    }
+    pub fn fail(&mut self) {
+        self.state = EngineRuntimeState::Failed;
+    }
+
     pub fn spawn_player(&mut self, peer: u64, position: Vec2) -> Result<Entity> {
+        if matches!(
+            self.state,
+            EngineRuntimeState::Created
+                | EngineRuntimeState::Initializing
+                | EngineRuntimeState::LoadingContent
+        ) {
+            return Err(anyhow::anyhow!("Cannot accept players before Ready state"));
+        }
         let e = self.world.spawn();
         self.world.insert(e, PlayerPeer(peer))?;
         self.world.insert(e, PositionComponent(position))?;
@@ -197,6 +248,14 @@ impl EngineRuntime {
         if self.state != EngineRuntimeState::Running {
             return Ok(());
         }
+
+        let _ctx = TickContext {
+            current_tick: self.current_tick,
+            delta_time: delta_seconds,
+            fixed_timestep: 1.0 / self.config.tick_rate.max(1) as f32,
+            runtime_state: self.state,
+            deterministic_seed: self.deterministic_seed,
+        };
 
         // 1. Run ECS Scheduler Systems with structured error propagation
         if let Err(e) = self.scheduler.run(&mut self.world, delta_seconds) {
@@ -238,8 +297,9 @@ impl EngineRuntime {
         }
 
         // 5. Replication & Metrics Update
+        self.current_tick += 1;
         self.world.advance_tick();
-        self.health.tick(self.world.tick());
+        self.health.tick(self.current_tick);
         self.metrics.entities.set(self.players.len() as i64);
         self.metrics
             .physics_contacts
@@ -249,41 +309,46 @@ impl EngineRuntime {
     }
 
     pub fn sync_map_physics(&mut self) {
-        let tile_size = self.map.tile_size;
-        for grid in self.map.grids.values_mut() {
+        let mut dirty = Vec::new();
+        for (&grid_entity, grid) in &mut self.map.grids {
             for (&(cx, cy), chunk) in grid.chunks.iter_mut() {
                 if chunk.collision_dirty {
-                    for x in 0..honknet_map::CHUNK_SIZE {
-                        for y in 0..honknet_map::CHUNK_SIZE {
-                            let idx = (y * honknet_map::CHUNK_SIZE + x) as usize;
-                            let tile_id = chunk.tiles[idx] as usize;
-                            if let Some(def) = self.map.tiles.get(tile_id) {
-                                if def.solid {
-                                    let world_pos = Vec2::new(
-                                        (cx * honknet_map::CHUNK_SIZE + x) as f32 * tile_size,
-                                        (cy * honknet_map::CHUNK_SIZE + y) as f32 * tile_size,
-                                    );
-                                    let dummy_e = Entity::new((cx * 1000 + x) as u32, 0);
-                                    self.physics.insert(Body::static_body(
-                                        dummy_e,
-                                        world_pos,
-                                        Fixture {
-                                            shape: Shape::Box {
-                                                half: Vec2::new(tile_size * 0.5, tile_size * 0.5),
-                                            },
-                                            friction: def.friction,
-                                            restitution: 0.0,
-                                            sensor: false,
-                                            layer: 1,
-                                            mask: 1,
-                                        },
-                                    ));
-                                }
-                            }
-                        }
-                    }
+                    dirty.push((grid_entity, cx, cy));
                     chunk.collision_dirty = false;
                 }
+            }
+        }
+        for (grid_entity, cx, cy) in dirty {
+            let colliders = self.map.build_chunk_colliders(grid_entity, cx, cy);
+
+            // For now, clear all old dummy entities for this chunk.
+            for y in 0..honknet_map::CHUNK_SIZE {
+                for x in 0..honknet_map::CHUNK_SIZE {
+                    let dummy_e = Entity::new((cx * 1000 + x) as u32, (cy * 1000 + y) as u32);
+                    self.physics.remove(dummy_e);
+                }
+            }
+
+            // Add new merged colliders
+            for (i, aabb) in colliders.into_iter().enumerate() {
+                let dummy_e = Entity::new(
+                    (cx * 1000 + (i as i32)) as u32,
+                    (cy * 1000 + i as i32) as u32,
+                );
+                let center = aabb.min + (aabb.max - aabb.min) * 0.5;
+                let half = (aabb.max - aabb.min) * 0.5;
+                self.physics.insert(Body::static_body(
+                    dummy_e,
+                    center,
+                    Fixture {
+                        shape: Shape::Box { half },
+                        friction: 0.5,
+                        restitution: 0.0,
+                        sensor: false,
+                        layer: 1,
+                        mask: 1,
+                    },
+                ));
             }
         }
     }
@@ -307,6 +372,7 @@ impl EngineRuntime {
             observers: std::collections::HashSet::new(),
             forced: std::collections::HashSet::new(),
             teams: std::collections::HashSet::new(),
+            containers: std::collections::HashSet::new(),
         };
 
         self.replication

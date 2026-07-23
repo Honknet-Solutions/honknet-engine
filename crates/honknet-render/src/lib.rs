@@ -1,6 +1,38 @@
 use bytemuck::{Pod, Zeroable};
 use honknet_math::{Aabb, Vec2};
 use std::collections::{BTreeMap, HashMap};
+
+pub type AssetId = u32;
+pub type StateId = u32;
+pub type Direction = u8;
+pub type Color = [f32; 4];
+pub type LayerKey = i32;
+pub type ShaderId = u32;
+
+pub struct SpriteComponent {
+    pub rsi: AssetId,
+    pub state: StateId,
+    pub direction: Direction,
+    pub visible: bool,
+    pub color: Color,
+    pub scale: Vec2,
+    pub offset: Vec2,
+    pub rotation: f32,
+    pub draw_depth: i16,
+}
+
+pub struct SpriteLayer {
+    pub key: LayerKey,
+    pub rsi: AssetId,
+    pub state: StateId,
+    pub visible: bool,
+    pub color: Color,
+    pub scale: Vec2,
+    pub offset: Vec2,
+    pub rotation: f32,
+    pub shader: Option<ShaderId>,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct SpriteInstance {

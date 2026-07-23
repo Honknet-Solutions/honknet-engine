@@ -3,6 +3,19 @@ use honknet_math::Vec2;
 use rand::{rngs::SmallRng, RngCore, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputCommand {
+    pub sequence: u32,
+    pub client_tick: u64,
+    pub estimated_server_tick: u64,
+    pub movement: Vec2,
+    pub aim: Vec2,
+    pub pressed: u64,
+    pub released: u64,
+    pub analog: [f32; 4],
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PredictedState {
     pub tick: u64,
@@ -18,6 +31,108 @@ pub struct InputFrame {
     pub tick: u64,
     pub sequence: u32,
     pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PredictionHistory {
+    pub input: InputCommand,
+    pub predicted_transform: PredictedState,
+    pub predicted_velocity: Vec2,
+    pub predicted_physics_state: Vec<u8>,
+    pub rng_state: u64,
+    pub predicted_spawns: Vec<Entity>,
+    pub predicted_despawns: Vec<Entity>,
+}
+
+pub struct Reconciliation {
+    pub max_divergence: f32,
+}
+
+impl Reconciliation {
+    pub fn find_divergence(&self, auth: &PredictedState, hist: &PredictionHistory) -> bool {
+        (auth.position - hist.predicted_transform.position).length() > self.max_divergence
+    }
+
+    pub fn replay_unconfirmed<F>(
+        &self,
+        start_state: &PredictedState,
+        inputs: &[InputCommand],
+        mut apply: F,
+    ) -> PredictedState
+    where
+        F: FnMut(&PredictedState, &InputCommand) -> PredictedState,
+    {
+        let mut state = start_state.clone();
+        for input in inputs {
+            state = apply(&state, input);
+        }
+        state
+    }
+
+    pub fn smooth_correction(
+        &self,
+        current: &mut PredictedState,
+        target: &PredictedState,
+        factor: f32,
+    ) {
+        current.position = current.position + (target.position - current.position) * factor;
+        current.velocity = current.velocity + (target.velocity - current.velocity) * factor;
+    }
+}
+
+#[allow(dead_code)]
+pub struct SnapshotBuffer {
+    pub snapshots: VecDeque<PredictedState>,
+    pub capacity: usize,
+}
+
+pub struct RemoteInterpolation {
+    pub buffer: SnapshotBuffer,
+    pub interpolation_delay: f64,
+    pub snap_threshold: f32,
+}
+
+impl RemoteInterpolation {
+    pub fn new(capacity: usize, delay: f64, snap: f32) -> Self {
+        Self {
+            buffer: SnapshotBuffer {
+                snapshots: VecDeque::new(),
+                capacity,
+            },
+            interpolation_delay: delay,
+            snap_threshold: snap,
+        }
+    }
+
+    pub fn teleport_detection(&self, a: &PredictedState, b: &PredictedState) -> bool {
+        (a.position - b.position).length() > self.snap_threshold
+    }
+
+    pub fn interpolate_position(&self, a: &PredictedState, b: &PredictedState, t: f32) -> Vec2 {
+        if self.teleport_detection(a, b) {
+            return b.position;
+        }
+        a.position + (b.position - a.position) * t
+    }
+
+    pub fn interpolate_rotation(&self, a: f32, b: f32, t: f32) -> f32 {
+        let mut diff = b - a;
+        while diff < -std::f32::consts::PI {
+            diff += std::f32::consts::PI * 2.0;
+        }
+        while diff > std::f32::consts::PI {
+            diff -= std::f32::consts::PI * 2.0;
+        }
+        a + diff * t
+    }
+
+    pub fn interpolate_animation(&self, a: u32, b: u32, t: f32) -> u32 {
+        if t >= 1.0 {
+            b
+        } else {
+            a
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]

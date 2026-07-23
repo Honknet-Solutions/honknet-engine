@@ -71,9 +71,21 @@ async fn main() -> Result<()> {
         listen_address: args.listen.to_string(),
         persistence_path: None,
         replay_path: None,
-        auth_secret: std::env::var("HONKNET_AUTH_SECRET")
-            .unwrap_or_else(|_| "honknet-prod-secret-key-1337".to_string()),
+        auth_signing_key: std::env::var("HONKNET_AUTH_KEY")
+            .unwrap_or_else(|_| "honknet-auth-key-1337".to_string())
+            .into_bytes(),
+        session_key: std::env::var("HONKNET_SESSION_KEY")
+            .unwrap_or_else(|_| "honknet-session-key-1337".to_string())
+            .into_bytes(),
+        reconnect_key: std::env::var("HONKNET_RECONNECT_KEY")
+            .unwrap_or_else(|_| "honknet-reconnect-key-1337".to_string())
+            .into_bytes(),
     })?;
+
+    runtime.initialize();
+    runtime.load_content();
+    runtime.ready();
+    runtime.start();
 
     let dt = 1. / args.tick_rate.max(1) as f64;
     let mut interval = tokio::time::interval(Duration::from_secs_f64(dt));

@@ -48,6 +48,7 @@ mod tests {
             grids: std::collections::HashMap::new(),
             metadata: std::collections::HashMap::new(),
             streaming_regions: vec![],
+            dirty_chunks: honknet_map::DirtyChunkQueue::default(),
         };
         map.grids.insert(
             grid_entity,
