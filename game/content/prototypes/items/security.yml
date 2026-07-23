@@ -1,0 +1,43 @@
+- id: ItemStunBaton
+  name: "Stun Baton"
+  description: "A high-voltage non-lethal stun baton for pacifying hostile targets."
+  sprite: "textures/Objects/Weapons/stunbaton.png"
+  components:
+    ItemComponent:
+      weight: 1.5
+      size: 2
+    MeleeWeaponComponent:
+      brute_damage: 15.0
+      burn_damage: 0.0
+      attack_cooldown: 0.8
+
+- id: ItemTazer
+  name: "Advanced Tazer"
+  description: "Fires electro-muscular disruption darts to instantly subdue targets."
+  sprite: "textures/Objects/Weapons/tazer.png"
+  components:
+    ItemComponent:
+      weight: 1.2
+      size: 2
+
+- id: ItemHandcuffs
+  name: "Zip-Tie Handcuffs"
+  description: "Heavy-duty plastic handcuffs for restraining detained suspects."
+  sprite: "textures/Objects/Security/handcuffs.png"
+  components:
+    ItemComponent:
+      weight: 0.2
+      size: 1
+
+- id: ItemEnergyGun
+  name: "Energy Gun"
+  description: "A standard Nanotrasen officer sidearm switchable between Stun and Lethal modes."
+  sprite: "textures/Objects/Weapons/egun.png"
+  components:
+    ItemComponent:
+      weight: 2.0
+      size: 2
+    MeleeWeaponComponent:
+      brute_damage: 25.0
+      burn_damage: 5.0
+      attack_cooldown: 0.6

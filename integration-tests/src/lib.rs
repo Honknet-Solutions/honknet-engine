@@ -128,7 +128,7 @@ mod tests {
         .unwrap();
 
         runtime.initialize();
-        runtime.load_content_project(&PathBuf::from("content"));
+        runtime.load_content_project(&PathBuf::from("game"));
         runtime.ready();
         runtime.start();
 

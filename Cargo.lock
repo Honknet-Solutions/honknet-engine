@@ -1328,6 +1328,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "game"
+version = "1.0.0-rc.1"
+dependencies = [
+ "honknet-core",
+ "honknet-ecs",
+ "honknet-events",
+ "honknet-map",
+ "honknet-math",
+ "honknet-net-core",
+ "honknet-physics",
+ "honknet-prototypes",
+ "honknet-replication",
+ "honknet-scheduler",
+ "honknet-sdk",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4350,25 +4369,6 @@ checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "space-station-15"
-version = "1.0.0-rc.1"
-dependencies = [
- "honknet-core",
- "honknet-ecs",
- "honknet-events",
- "honknet-map",
- "honknet-math",
- "honknet-net-core",
- "honknet-physics",
- "honknet-prototypes",
- "honknet-replication",
- "honknet-scheduler",
- "honknet-sdk",
- "serde",
- "tracing",
 ]
 
 [[package]]

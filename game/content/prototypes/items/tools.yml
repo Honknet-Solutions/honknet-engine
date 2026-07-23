@@ -1,0 +1,76 @@
+- id: ItemCrowbar
+  name: "Crowbar"
+  description: "A heavy iron crowbar for prying open doors and floor tiles."
+  sprite: "textures/Objects/Tools/crowbar.png"
+  components:
+    ItemComponent:
+      weight: 2.0
+      size: 2
+    ToolComponent:
+      tool_type: "Crowbar"
+      use_delay: 1.0
+
+- id: ItemWelder
+  name: "Welding Tool"
+  description: "A high-temperature plasma welding tool for construction."
+  sprite: "textures/Objects/Tools/welder.png"
+  components:
+    ItemComponent:
+      weight: 1.5
+      size: 2
+    ToolComponent:
+      tool_type: "Welder"
+      use_delay: 1.5
+
+- id: ItemScrewdriver
+  name: "Screwdriver"
+  description: "A precision screwdriver for opening maintenance panels."
+  sprite: "textures/Objects/Tools/screwdriver.png"
+  components:
+    ItemComponent:
+      weight: 0.5
+      size: 1
+    ToolComponent:
+      tool_type: "Screwdriver"
+      use_delay: 0.5
+
+- id: ItemWrench
+  name: "Wrench"
+  description: "A heavy steel wrench for securing bolts and pipes."
+  sprite: "textures/Objects/Tools/wrench.png"
+  components:
+    ItemComponent:
+      weight: 1.8
+      size: 2
+    ToolComponent:
+      tool_type: "Wrench"
+      use_delay: 1.0
+
+- id: ItemWirecutters
+  name: "Wirecutters"
+  description: "Insulated wirecutters for hacking airlock cables."
+  sprite: "textures/Objects/Tools/wirecutters.png"
+  components:
+    ItemComponent:
+      weight: 0.4
+      size: 1
+
+- id: ItemMultitool
+  name: "Multitool"
+  description: "An electronic multitool for pulsing power lines and airlock buffers."
+  sprite: "textures/Objects/Tools/multitool.png"
+  components:
+    ItemComponent:
+      weight: 0.6
+      size: 1
+
+- id: ItemToolbox
+  name: "Emergency Toolbox"
+  description: "A sturdy red metal toolbox holding essential engineering tools."
+  sprite: "textures/Objects/Storage/toolbox_red.png"
+  components:
+    ItemComponent:
+      weight: 4.0
+      size: 3
+    ContainerComponent:
+      capacity: 7

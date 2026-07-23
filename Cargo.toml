@@ -44,7 +44,7 @@ members = [
   "crates/honknet-studio-history",
   "crates/honknet-studio-core",
   "crates/honknet-studio-runtime",
-  "src",
+  "game",
   "apps/honknet-server",
   "apps/honknet-web",
   "apps/honknet-headless-client",

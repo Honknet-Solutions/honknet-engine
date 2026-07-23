@@ -1,0 +1,31 @@
+id: tgstation_alpha
+name: "TGStation Alpha (Honknet Edition)"
+author: "Antigravity Team"
+version: 1
+
+tiles:
+  - x: 0
+    y: 0
+    type: "floor"
+    airlock: false
+  - x: 1
+    y: 0
+    type: "floor"
+    airlock: false
+  - x: 2
+    y: 0
+    type: "floor"
+    airlock: true
+    prototype: "DoorAirlock"
+  - x: 3
+    y: 0
+    type: "wall"
+    airlock: false
+
+entities:
+  - prototype: "MobHuman"
+    x: 0.0
+    y: 0.0
+  - prototype: "ItemToolbox"
+    x: 1.0
+    y: 0.0

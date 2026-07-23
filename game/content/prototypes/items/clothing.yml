@@ -1,0 +1,57 @@
+- id: ItemJumpsuitGrey
+  name: "Assistant Jumpsuit"
+  description: "A comfortable grey Nanotrasen jumpsuit."
+  sprite: "textures/Clothing/Jumpsuits/grey.png"
+  components:
+    ItemComponent:
+      weight: 1.0
+      size: 2
+
+- id: ItemJumpsuitSec
+  name: "Security Jumpsuit"
+  description: "A sturdy red and black security officer jumpsuit."
+  sprite: "textures/Clothing/Jumpsuits/security.png"
+  components:
+    ItemComponent:
+      weight: 1.2
+      size: 2
+
+- id: ItemJumpsuitEng
+  name: "Engineering Jumpsuit"
+  description: "An insulated yellow station engineer jumpsuit."
+  sprite: "textures/Clothing/Jumpsuits/engineer.png"
+  components:
+    ItemComponent:
+      weight: 1.2
+      size: 2
+
+- id: ItemArmorSec
+  name: "Security Armor Vest"
+  description: "A ballistic chest vest offering protection against melee and bullet impacts."
+  sprite: "textures/Clothing/Suits/security_armor.png"
+  components:
+    ItemComponent:
+      weight: 3.5
+      size: 3
+
+- id: ItemGasMask
+  name: "Emergency Gas Mask"
+  description: "Filters toxins and connects to internal O2 tanks in zero-atmosphere zones."
+  sprite: "textures/Clothing/Masks/gasmask.png"
+  components:
+    ItemComponent:
+      weight: 0.8
+      size: 1
+
+- id: ItemIdCard
+  name: "Standard ID Card"
+  description: "A Nanotrasen identification card storing security clearances."
+  sprite: "textures/Objects/Cards/id_card.png"
+  components:
+    ItemComponent:
+      weight: 0.1
+      size: 1
+    IdCardComponent:
+      owner_name: "Assistant"
+      job_title: "Assistant"
+      access_tags: ["Common"]

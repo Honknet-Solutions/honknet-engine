@@ -1,0 +1,48 @@
+- id: ItemBrutepack
+  name: "Brutepack"
+  description: "Sterile medical bandages for treating brute trauma and lacerations."
+  sprite: "textures/Objects/Medical/brutepack.png"
+  components:
+    ItemComponent:
+      weight: 0.3
+      size: 1
+
+- id: ItemOintment
+  name: "Burn Ointment"
+  description: "A soothing salve for treating severe plasma and heat burns."
+  sprite: "textures/Objects/Medical/ointment.png"
+  components:
+    ItemComponent:
+      weight: 0.3
+      size: 1
+
+- id: ItemSyringe
+  name: "Medical Syringe"
+  description: "A 15uL sterile glass syringe for chemical injections."
+  sprite: "textures/Objects/Medical/syringe.png"
+  components:
+    ItemComponent:
+      weight: 0.2
+      size: 1
+    ReagentHolderComponent:
+      max_volume: 15.0
+
+- id: ItemBeaker
+  name: "Glass Beaker"
+  description: "A 50uL heat-resistant glass beaker for chemical mixing."
+  sprite: "textures/Objects/Medical/beaker.png"
+  components:
+    ItemComponent:
+      weight: 0.5
+      size: 1
+    ReagentHolderComponent:
+      max_volume: 50.0
+
+- id: ItemHealthAnalyzer
+  name: "Health Analyzer"
+  description: "A handheld medical scanner displaying patient vitals and internal trauma."
+  sprite: "textures/Objects/Medical/health_analyzer.png"
+  components:
+    ItemComponent:
+      weight: 0.8
+      size: 1

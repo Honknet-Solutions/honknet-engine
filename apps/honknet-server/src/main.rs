@@ -20,7 +20,7 @@ struct Args {
     listen: SocketAddr,
     #[arg(long, default_value_t = 30)]
     tick_rate: u32,
-    #[arg(long, default_value = "content")]
+    #[arg(long, default_value = "game")]
     project: std::path::PathBuf,
 }
 
