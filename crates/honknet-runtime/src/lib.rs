@@ -65,6 +65,7 @@ pub struct EngineRuntime {
     pub health: HealthState,
     pub config: EngineRuntimeConfig,
     pub players: HashMap<u64, Entity>,
+    pub client_baselines: HashMap<u64, u64>,
 }
 
 impl EngineRuntime {
@@ -133,6 +134,7 @@ impl EngineRuntime {
             health,
             config,
             players: HashMap::new(),
+            client_baselines: HashMap::new(),
         })
     }
 
@@ -221,6 +223,46 @@ impl EngineRuntime {
         Ok(())
     }
 
+    pub fn sync_map_physics(&mut self) {
+        let tile_size = self.map.tile_size;
+        for grid in self.map.grids.values_mut() {
+            for (&(cx, cy), chunk) in grid.chunks.iter_mut() {
+                if chunk.collision_dirty {
+                    for x in 0..honknet_map::CHUNK_SIZE {
+                        for y in 0..honknet_map::CHUNK_SIZE {
+                            let idx = (y * honknet_map::CHUNK_SIZE + x) as usize;
+                            let tile_id = chunk.tiles[idx] as usize;
+                            if let Some(def) = self.map.tiles.get(tile_id) {
+                                if def.solid {
+                                    let world_pos = Vec2::new(
+                                        (cx * honknet_map::CHUNK_SIZE + x) as f32 * tile_size,
+                                        (cy * honknet_map::CHUNK_SIZE + y) as f32 * tile_size,
+                                    );
+                                    let dummy_e = Entity::new((cx * 1000 + x) as u32, 0);
+                                    self.physics.insert(Body::static_body(
+                                        dummy_e,
+                                        world_pos,
+                                        Fixture {
+                                            shape: Shape::Box {
+                                                half: Vec2::new(tile_size * 0.5, tile_size * 0.5),
+                                            },
+                                            friction: def.friction,
+                                            restitution: 0.0,
+                                            sensor: false,
+                                            layer: 1,
+                                            mask: 1,
+                                        },
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    chunk.collision_dirty = false;
+                }
+            }
+        }
+    }
+
     pub fn build_client_snapshot(
         &mut self,
         peer: u64,
@@ -244,6 +286,25 @@ impl EngineRuntime {
 
         self.replication
             .build_snapshot(self.world.tick(), &ctx, byte_budget)
+    }
+
+    pub fn build_client_delta(
+        &mut self,
+        peer: u64,
+        byte_budget: usize,
+    ) -> Option<honknet_replication::Delta> {
+        let snapshot = self.build_client_snapshot(peer, byte_budget);
+        if let Some(&baseline) = self.client_baselines.get(&peer) {
+            self.replication.delta(baseline, &snapshot)
+        } else {
+            Some(honknet_replication::Delta {
+                tick: snapshot.tick,
+                baseline: 0,
+                spawns: snapshot.entities,
+                updates: vec![],
+                despawns: vec![],
+            })
+        }
     }
 }
 

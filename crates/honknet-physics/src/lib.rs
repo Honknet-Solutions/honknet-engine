@@ -108,6 +108,29 @@ impl Body {
             fixtures: vec![fixture],
         }
     }
+
+    pub fn static_body(entity: Entity, position: Vec2, fixture: Fixture) -> Self {
+        Self {
+            entity,
+            body_type: BodyType::Static,
+            position,
+            rotation: 0.,
+            velocity: Vec2::ZERO,
+            angular_velocity: 0.,
+            force: Vec2::ZERO,
+            torque: 0.,
+            mass: 0.0,
+            inv_mass: 0.0,
+            inertia: 0.0,
+            inv_inertia: 0.0,
+            damping: 0.0,
+            gravity_scale: 0.,
+            fixed_rotation: true,
+            sleeping: false,
+            continuous: false,
+            fixtures: vec![fixture],
+        }
+    }
     pub fn aabb(&self) -> Aabb {
         self.fixtures
             .iter()
