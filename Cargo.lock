@@ -1936,6 +1936,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "honknet-studio-core"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "honknet-studio-history",
+ "honknet-studio-project",
+ "honknet-studio-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
+name = "honknet-studio-history"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "serde",
+ "thiserror 2.0.19",
+]
+
+[[package]]
+name = "honknet-studio-project"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "honknet-studio-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
+name = "honknet-studio-protocol"
+version = "1.0.0-rc.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
+name = "honknet-studio-runtime"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "honknet-runtime",
+ "serde",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "honknet-testing"
 version = "1.0.0-rc.1"
 dependencies = [
