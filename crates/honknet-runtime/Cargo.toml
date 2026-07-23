@@ -1,0 +1,31 @@
+[package]
+name = "honknet-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true
+honknet-core = { path = "../honknet-core" }
+honknet-ecs = { path = "../honknet-ecs" }
+honknet-scheduler = { path = "../honknet-scheduler" }
+honknet-events = { path = "../honknet-events" }
+honknet-math = { path = "../honknet-math" }
+honknet-transform = { path = "../honknet-transform" }
+honknet-spatial = { path = "../honknet-spatial" }
+honknet-map = { path = "../honknet-map" }
+honknet-physics = { path = "../honknet-physics" }
+honknet-net-core = { path = "../honknet-net-core" }
+honknet-net-transport = { path = "../honknet-net-transport" }
+honknet-replication = { path = "../honknet-replication" }
+honknet-prediction = { path = "../honknet-prediction" }
+honknet-resources = { path = "../honknet-resources" }
+honknet-prototypes = { path = "../honknet-prototypes" }
+honknet-persistence = { path = "../honknet-persistence" }
+honknet-replay = { path = "../honknet-replay" }
+honknet-auth = { path = "../honknet-auth" }
+honknet-admin = { path = "../honknet-admin" }
+honknet-observability = { path = "../honknet-observability" }

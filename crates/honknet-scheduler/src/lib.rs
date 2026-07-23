@@ -91,8 +91,12 @@ impl Scheduler {
     where
         S: System + 'static,
     {
+        self.add_boxed(Box::new(system));
+    }
+
+    pub fn add_boxed(&mut self, system: Box<dyn System>) {
         self.entries.push(Entry {
-            system: Box::new(system),
+            system,
             timing: SystemTiming::default(),
         });
     }

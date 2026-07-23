@@ -339,13 +339,53 @@ impl World {
             .iter()
             .filter_map(|(e, l)| (*l != Lifecycle::Removed).then_some(*e))
     }
-    pub fn query<T: Component>(&self) -> Vec<Entity> {
-        self.entities().filter(|e| self.contains::<T>(*e)).collect()
+    pub fn query_iter<T: Component>(&self) -> impl Iterator<Item = Entity> + '_ {
+        if let Some(s) = self.storages.get(&TypeId::of::<T>()) {
+            if let Some(p) = s.as_any().downcast_ref::<PackedStorage<T>>() {
+                return Box::new(p.entities.iter().copied().filter(|e| self.is_alive(*e)))
+                    as Box<dyn Iterator<Item = Entity> + '_>;
+            }
+        }
+        Box::new(self.entities().filter(|e| self.contains::<T>(*e)))
+            as Box<dyn Iterator<Item = Entity> + '_>
     }
+
+    pub fn query<T: Component>(&self) -> Vec<Entity> {
+        self.query_iter::<T>().collect()
+    }
+
+    pub fn query2_iter<A: Component, B: Component>(&self) -> impl Iterator<Item = Entity> + '_ {
+        self.query_iter::<A>().filter(|e| self.contains::<B>(*e))
+    }
+
     pub fn query2<A: Component, B: Component>(&self) -> Vec<Entity> {
-        self.entities()
-            .filter(|e| self.contains::<A>(*e) && self.contains::<B>(*e))
-            .collect()
+        self.query2_iter::<A, B>().collect()
+    }
+
+    pub fn query_with<T: Component, F: FnMut(Entity, &T)>(&self, mut f: F) {
+        if let Some(s) = self.storages.get(&TypeId::of::<T>()) {
+            if let Some(p) = s.as_any().downcast_ref::<PackedStorage<T>>() {
+                for (i, &e) in p.entities.iter().enumerate() {
+                    if self.is_alive(e) {
+                        f(e, &p.values[i]);
+                    }
+                }
+                return;
+            }
+        }
+        for e in self.query_iter::<T>() {
+            if let Some(comp) = self.get::<T>(e) {
+                f(e, comp);
+            }
+        }
+    }
+
+    pub fn query2_with<A: Component, B: Component, F: FnMut(Entity, &A, &B)>(&self, mut f: F) {
+        for e in self.query2_iter::<A, B>() {
+            if let (Some(a), Some(b)) = (self.get::<A>(e), self.get::<B>(e)) {
+                f(e, a, b);
+            }
+        }
     }
     pub fn initialize(&mut self, e: Entity) -> Result<(), EcsError> {
         if !self.is_alive(e) {
@@ -454,5 +494,22 @@ mod tests {
         assert!(w.remove_component::<Pos>(e));
         assert!(!w.contains::<Pos>(e));
         assert!(!w.remove_component::<Pos>(e));
+    }
+    #[test]
+    fn zero_allocation_query_iterators() {
+        let mut w = World::default();
+        let e1 = w.spawn();
+        w.insert(e1, Pos(10)).unwrap();
+        let e2 = w.spawn();
+        w.insert(e2, Pos(20)).unwrap();
+
+        let mut count = 0;
+        let mut sum = 0;
+        w.query_with::<Pos, _>(|_e, pos| {
+            count += 1;
+            sum += pos.0;
+        });
+        assert_eq!(count, 2);
+        assert_eq!(sum, 30);
     }
 }

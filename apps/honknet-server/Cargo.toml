@@ -19,6 +19,7 @@ honknet-physics = { path = "../../crates/honknet-physics" }
 honknet-net-core = { path = "../../crates/honknet-net-core" }
 honknet-net-transport = { path = "../../crates/honknet-net-transport" }
 honknet-replication = { path = "../../crates/honknet-replication" }
-honknet-persistence = { path = "../../crates/honknet-persistence" }
+honknet-runtime = { path = "../../crates/honknet-runtime" }
+honknet-scheduler = { path = "../../crates/honknet-scheduler" }
 honknet-observability = { path = "../../crates/honknet-observability" }
 

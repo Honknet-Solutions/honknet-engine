@@ -1,14 +1,12 @@
 use anyhow::Result;
 use clap::Parser;
 use honknet_core::Entity;
-use honknet_ecs::{Component, World};
 use honknet_math::Vec2;
 use honknet_net_core::{decode_message, encode_message, Channel, NetworkMessage};
 use honknet_net_transport::{NetworkTransport, TransportEvent, UdpTransport};
-use honknet_observability::{HealthState, Metrics};
-use honknet_physics::{Body, Fixture, PhysicsWorld, Shape};
+use honknet_runtime::{EngineRuntime, EngineRuntimeConfig, VelocityComponent};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 #[derive(Parser)]
 struct Args {
@@ -17,19 +15,6 @@ struct Args {
     #[arg(long, default_value_t = 30)]
     tick_rate: u32,
 }
-
-#[derive(Debug, Clone, Copy)]
-struct PositionComponent(pub Vec2);
-impl Component for PositionComponent {}
-
-#[derive(Debug, Clone, Copy)]
-struct VelocityComponent(pub Vec2);
-impl Component for VelocityComponent {}
-
-#[derive(Debug, Clone, Copy)]
-#[allow(dead_code)]
-struct PlayerPeer(pub u64);
-impl Component for PlayerPeer {}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Hello {
@@ -80,15 +65,17 @@ async fn main() -> Result<()> {
         .init();
     let args = Args::parse();
     let transport = UdpTransport::bind(args.listen).await?;
-    let mut world = World::default();
-    let mut physics = PhysicsWorld::default();
-    let mut players = HashMap::new();
-    let metrics = Metrics::new();
-    let health = HealthState::default();
-    health.set_check("transport", true);
 
-    let mut interval =
-        tokio::time::interval(Duration::from_secs_f64(1. / args.tick_rate.max(1) as f64));
+    let mut runtime = EngineRuntime::new(EngineRuntimeConfig {
+        tick_rate: args.tick_rate,
+        listen_address: args.listen.to_string(),
+        persistence_path: None,
+        replay_path: None,
+    })?;
+
+    let dt = 1. / args.tick_rate.max(1) as f64;
+    let mut interval = tokio::time::interval(Duration::from_secs_f64(dt));
+
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => break,
@@ -96,32 +83,14 @@ async fn main() -> Result<()> {
                 for event in transport.poll().await? {
                     match event {
                         TransportEvent::Connected(peer, _) => {
-                            let e = world.spawn();
                             let spawn_pos = Vec2::new(peer as f32 % 8., 0.);
-                            world.insert(e, PlayerPeer(peer))?;
-                            world.insert(e, PositionComponent(spawn_pos))?;
-                            world.insert(e, VelocityComponent(Vec2::ZERO))?;
-                            world.initialize(e)?;
-                            players.insert(peer, e);
+                            let e = runtime.spawn_player(peer, spawn_pos)?;
 
-                            physics.insert(Body::dynamic(
-                                e,
-                                spawn_pos,
-                                1.,
-                                Fixture {
-                                    shape: Shape::Circle { radius: 0.35 },
-                                    friction: 0.5,
-                                    restitution: 0.05,
-                                    sensor: false,
-                                    layer: 1,
-                                    mask: 1,
-                                },
-                            ));
-                            let (_, b, _compressed) = encode_message(
+                            let (_, b, _) = encode_message(
                                 &Welcome {
                                     peer,
                                     entity: e,
-                                    tick: world.tick(),
+                                    tick: runtime.world.tick(),
                                 },
                                 false,
                             )?;
@@ -130,12 +99,12 @@ async fn main() -> Result<()> {
                         TransportEvent::Data(peer, _, kind, data) => {
                             if kind == Input::ID {
                                 if let Ok(i) = decode_message::<Input>(&data, false, 4096) {
-                                    if let Some(&e) = players.get(&peer) {
+                                    if let Some(&e) = runtime.players.get(&peer) {
                                         let target_vel = i.movement.normalized() * 4.;
-                                        if let Some(v) = world.get_mut::<VelocityComponent>(e) {
+                                        if let Some(v) = runtime.world.get_mut::<VelocityComponent>(e) {
                                             v.0 = target_vel;
                                         }
-                                        if let Some(b) = physics.bodies.get_mut(&e) {
+                                        if let Some(b) = runtime.physics.bodies.get_mut(&e) {
                                             b.velocity = target_vel;
                                         }
                                     }
@@ -145,42 +114,29 @@ async fn main() -> Result<()> {
                             }
                         }
                         TransportEvent::Disconnected(peer, _) => {
-                            if let Some(e) = players.remove(&peer) {
-                                physics.remove(e);
-                                let _ = world.despawn(e);
-                            }
+                            runtime.despawn_player(peer)?;
                         }
                     }
                 }
-                let dt = 1. / args.tick_rate.max(1) as f64;
-                physics.step(dt as f32);
 
-                // Sync physics bodies back into ECS World components
-                for (peer, &e) in &players {
-                    if let Some(b) = physics.bodies.get(&e) {
-                        if let Some(pos) = world.get_mut::<PositionComponent>(e) {
-                            pos.0 = b.position;
-                        }
-                        if let Some(vel) = world.get_mut::<VelocityComponent>(e) {
-                            vel.0 = b.velocity;
-                        }
+                // Tick full EngineRuntime kernel
+                runtime.tick(dt as f32)?;
+
+                // Replicate state over network transport
+                for (&peer, &e) in &runtime.players {
+                    if let Some(b) = runtime.physics.bodies.get(&e) {
                         let (_, payload, _) = encode_message(
                             &State {
-                                tick: world.tick(),
+                                tick: runtime.world.tick(),
                                 entity: e,
                                 position: b.position,
                                 velocity: b.velocity,
                             },
                             false,
                         )?;
-                        transport.send(*peer, Channel::UnreliableSequenced, State::ID, &payload).await?;
+                        transport.send(peer, Channel::UnreliableSequenced, State::ID, &payload).await?;
                     }
                 }
-
-                world.advance_tick();
-                health.tick(world.tick());
-                metrics.entities.set(players.len() as i64);
-                metrics.physics_contacts.set(physics.events.len() as i64);
             }
         }
     }

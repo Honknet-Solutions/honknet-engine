@@ -16,6 +16,9 @@ struct Vertex {
     color: [f32; 3],
 }
 
+use honknet_math::Vec2;
+use honknet_prediction::PredictionBuffer;
+
 struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -23,6 +26,10 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     vertex: wgpu::Buffer,
+    #[allow(dead_code)]
+    prediction_buffer: PredictionBuffer,
+    #[allow(dead_code)]
+    predicted_position: Vec2,
     _start: std::time::Instant,
 }
 
@@ -139,6 +146,8 @@ impl State {
             config,
             pipeline,
             vertex,
+            prediction_buffer: PredictionBuffer::new(64),
+            predicted_position: Vec2::ZERO,
             _start: std::time::Instant::now(),
         })
     }

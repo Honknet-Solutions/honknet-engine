@@ -1567,6 +1567,11 @@ version = "1.0.0-rc.1"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "honknet-core",
+ "honknet-math",
+ "honknet-net-core",
+ "honknet-net-transport",
+ "honknet-prediction",
  "pollster",
  "wgpu",
  "winit",
@@ -1832,6 +1837,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "honknet-runtime"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "honknet-admin",
+ "honknet-auth",
+ "honknet-core",
+ "honknet-ecs",
+ "honknet-events",
+ "honknet-map",
+ "honknet-math",
+ "honknet-net-core",
+ "honknet-net-transport",
+ "honknet-observability",
+ "honknet-persistence",
+ "honknet-physics",
+ "honknet-prediction",
+ "honknet-prototypes",
+ "honknet-replay",
+ "honknet-replication",
+ "honknet-resources",
+ "honknet-scheduler",
+ "honknet-spatial",
+ "honknet-transform",
+ "parking_lot",
+ "thiserror 2.0.19",
+ "tracing",
+]
+
+[[package]]
 name = "honknet-scheduler"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -1881,9 +1916,10 @@ dependencies = [
  "honknet-net-core",
  "honknet-net-transport",
  "honknet-observability",
- "honknet-persistence",
  "honknet-physics",
  "honknet-replication",
+ "honknet-runtime",
+ "honknet-scheduler",
  "serde",
  "tokio",
  "tracing",

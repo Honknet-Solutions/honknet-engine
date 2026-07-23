@@ -10,4 +10,9 @@ wgpu.workspace = true
 winit.workspace = true
 pollster = "0.4"
 bytemuck = { version = "1.21", features = ["derive"] }
+honknet-core = { path = "../../crates/honknet-core" }
+honknet-math = { path = "../../crates/honknet-math" }
+honknet-net-core = { path = "../../crates/honknet-net-core" }
+honknet-net-transport = { path = "../../crates/honknet-net-transport" }
+honknet-prediction = { path = "../../crates/honknet-prediction" }
 

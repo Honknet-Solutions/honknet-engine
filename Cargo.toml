@@ -33,6 +33,7 @@ members = [
   "crates/honknet-testing",
   "crates/honknet-input",
   "crates/honknet-package",
+  "crates/honknet-runtime",
   "apps/honknet-server",
   "apps/honknet-client",
   "apps/honknet-web",
