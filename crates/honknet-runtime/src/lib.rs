@@ -183,6 +183,31 @@ impl EngineRuntime {
     }
     pub fn load_content(&mut self) {
         self.state = EngineRuntimeState::LoadingContent;
+        
+        // Mount project prototypes if content directory exists
+        let prototype_path = PathBuf::from("content/prototypes");
+        if prototype_path.exists() {
+            if let Ok(entries) = std::fs::read_dir(prototype_path) {
+                for entry in entries.flatten() {
+                    if entry.path().extension().is_some_and(|e| e == "yml" || e == "yaml") {
+                        if let Ok(text) = std::fs::read_to_string(entry.path()) {
+                            let _ = self.prototypes.load_yaml(&text);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Initialize station map grid (Grid entity)
+        let grid_entity = self.world.spawn();
+        let mut station_grid = honknet_map::Grid {
+            entity: grid_entity,
+            transform: honknet_math::Transform2::IDENTITY,
+            chunks: HashMap::new(),
+            revision: 1,
+        };
+        station_grid.chunks.insert((0, 0), honknet_map::Chunk::new((0, 0), 1));
+        self.map.grids.insert(grid_entity, station_grid);
     }
     pub fn ready(&mut self) {
         self.state = EngineRuntimeState::Ready;

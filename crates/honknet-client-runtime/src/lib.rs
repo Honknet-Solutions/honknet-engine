@@ -145,6 +145,7 @@ pub struct ClientRuntime {
     pub predicted_position: Vec2,
     pub entity_mapping: EntityMapping,
     pub input_queue: VecDeque<(u64, Vec2)>,
+    pub controlled_entity: Option<Entity>,
     pub client_tick: u64,
     pub interpolation_clock: f32,
     pub prediction_clock: f32,
@@ -163,6 +164,7 @@ impl Default for ClientRuntime {
             predicted_position: Vec2::ZERO,
             entity_mapping: EntityMapping::default(),
             input_queue: VecDeque::new(),
+            controlled_entity: None,
             client_tick: 0,
             interpolation_clock: 0.0,
             prediction_clock: 0.0,
@@ -197,6 +199,11 @@ impl ClientRuntime {
                     new_local
                 };
 
+            if self.controlled_entity.is_none() {
+                self.controlled_entity = Some(local_entity);
+                self.predicted_position = e_state.position;
+            }
+
             apply_entity_state(&mut self.world, local_entity, e_state);
         }
     }
@@ -215,6 +222,11 @@ impl ClientRuntime {
                     .insert(server_id, LocalEntityId(new_local));
                 new_local
             };
+
+            if self.controlled_entity.is_none() {
+                self.controlled_entity = Some(local_entity);
+                self.predicted_position = spawn.position;
+            }
 
             apply_entity_state(&mut self.world, local_entity, spawn);
         }
@@ -280,6 +292,18 @@ impl ClientRuntime {
         for entity in self.world.query::<PositionComponent>() {
             if let Some(pos) = self.world.get::<PositionComponent>(entity) {
                 let uid = ((entity.index as u64) << 32) | (entity.generation as u64);
+                let (render_x, render_y) = if Some(entity) == self.controlled_entity && self.predicted_position != Vec2::ZERO {
+                    (self.predicted_position.x, self.predicted_position.y)
+                } else {
+                    (pos.0.x, pos.0.y)
+                };
+
+                let color = if let Some(sprite) = self.world.get::<SpriteComponent>(entity) {
+                    sprite.color
+                } else {
+                    0x00f0ff
+                };
+
                 sprites.push(RenderSprite {
                     render_id: uid,
                     entity_id: uid,
@@ -288,12 +312,12 @@ impl ClientRuntime {
                     frame_id: 0,
                     direction: 0,
                     layer: 0,
-                    x: pos.0.x,
-                    y: pos.0.y,
+                    x: render_x,
+                    y: render_y,
                     rotation: 0.0,
                     scale_x: 1.0,
                     scale_y: 1.0,
-                    color: 0x00f0ff,
+                    color,
                     alpha: 1.0,
                     flags: 0,
                 });

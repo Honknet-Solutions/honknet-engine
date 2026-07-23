@@ -118,8 +118,23 @@ async fn main() -> Result<()> {
                                             }
 
                                             let mut r = runtime_reader.lock().await;
-                                            let spawn_pos = Vec2::new(((peer_id % 8) as f32) * 50.0 - 150.0, 0.0);
-                                            let _ = r.spawn_player(peer_id, spawn_pos);
+                                            let mut reattached = false;
+                                            if let Some(token) = &hello.reconnect_token {
+                                                if let Some(id_str) = token.strip_prefix("rec-") {
+                                                    if let Ok(old_peer) = id_str.parse::<u64>() {
+                                                        if let Some(&existing_entity) = r.players.get(&old_peer) {
+                                                            r.players.insert(peer_id, existing_entity);
+                                                            reattached = true;
+                                                            info!("Peer {} re-attached to existing character entity for reconnect token {}", peer_id, token);
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            if !reattached {
+                                                let spawn_pos = Vec2::new(((peer_id % 8) as f32) * 50.0 - 150.0, 0.0);
+                                                let _ = r.spawn_player(peer_id, spawn_pos);
+                                            }
 
                                             let welcome = ServerWelcomePayload {
                                                 protocol_version: PROTOCOL_VERSION,
@@ -235,6 +250,20 @@ async fn main() -> Result<()> {
                         },
                     );
 
+                    let sprite_comp = honknet_replication::ComponentState::encode(
+                        honknet_replication::NET_ID_SPRITE,
+                        r.world.tick(),
+                        honknet_replication::ReplicationMode::Replicated,
+                        &honknet_replication::NetSpriteComponent {
+                            rsi_path: "Mobs/Species/Human/human.rsi".to_string(),
+                            state: "human_idle".to_string(),
+                            direction: 0,
+                            layer: 0,
+                            color: 0x00f0ff,
+                            visible: true,
+                        },
+                    );
+
                     entities_state.push(EntityState {
                         entity: e,
                         revision: r.world.tick(),
@@ -242,7 +271,7 @@ async fn main() -> Result<()> {
                         owner: Some(peer),
                         importance: 1.0,
                         frequency: 1,
-                        components: vec![transform_comp, physics_comp, meta_comp],
+                        components: vec![transform_comp, physics_comp, meta_comp, sprite_comp],
                     });
                 }
 
@@ -251,11 +280,17 @@ async fn main() -> Result<()> {
                     entities: entities_state,
                 };
 
-                if let Ok(env_payload) = encode_message_envelope(&snapshot, r.world.tick(), false) {
-                    let peers: Vec<u64> = ws_srv.clients.keys().copied().collect();
-                    for peer in peers {
-                        ws_srv.send_to(peer, env_payload.clone());
+                let current_tick = r.world.tick();
+                let peers: Vec<u64> = ws_srv.clients.keys().copied().collect();
+                for peer in peers {
+                    if let Some(delta) = r.build_client_delta(peer, 64 * 1024) {
+                        if let Ok(env_payload) = encode_message_envelope(&delta, current_tick, false) {
+                            ws_srv.send_to(peer, env_payload);
+                        }
+                    } else if let Ok(env_payload) = encode_message_envelope(&snapshot, current_tick, false) {
+                        ws_srv.send_to(peer, env_payload);
                     }
+                    r.client_baselines.insert(peer, current_tick);
                 }
 
                 ws_srv.update();
