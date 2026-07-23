@@ -297,8 +297,7 @@ impl EngineRuntime {
         }
 
         // 5. Replication & Metrics Update
-        self.current_tick += 1;
-        self.world.advance_tick();
+        self.current_tick = self.world.tick();
         self.health.tick(self.current_tick);
         self.metrics.entities.set(self.players.len() as i64);
         self.metrics

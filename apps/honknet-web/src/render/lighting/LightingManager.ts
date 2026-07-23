@@ -1,4 +1,4 @@
-import { Container, Graphics, BLEND_MODES } from 'pixi.js';
+import { Container, Graphics } from 'pixi.js';
 
 export interface PointLight {
     x: number;
@@ -18,7 +18,7 @@ export class LightingManager {
         this.lightingLayer = lightingLayer;
         
         this.darknessOverlay = new Graphics();
-        this.darknessOverlay.blendMode = BLEND_MODES.MULTIPLY;
+        this.darknessOverlay.blendMode = 'multiply';
         this.lightingLayer.addChild(this.darknessOverlay);
     }
 
@@ -37,7 +37,7 @@ export class LightingManager {
         // Update light sprites/graphics
         while (this.lights.length < lights.length) {
             const lightGfx = new Graphics();
-            lightGfx.blendMode = BLEND_MODES.ADD;
+            lightGfx.blendMode = 'add';
             this.lightingLayer.addChild(lightGfx);
             this.lights.push(lightGfx);
         }
