@@ -1,0 +1,23 @@
+[package]
+name = "space-station-15"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+honknet-core = { path = "../crates/honknet-core" }
+honknet-ecs = { path = "../crates/honknet-ecs" }
+honknet-events = { path = "../crates/honknet-events" }
+honknet-math = { path = "../crates/honknet-math" }
+honknet-map = { path = "../crates/honknet-map" }
+honknet-physics = { path = "../crates/honknet-physics" }
+honknet-net-core = { path = "../crates/honknet-net-core" }
+honknet-replication = { path = "../crates/honknet-replication" }
+honknet-prototypes = { path = "../crates/honknet-prototypes" }
+honknet-scheduler = { path = "../crates/honknet-scheduler" }
+honknet-sdk = { path = "../crates/honknet-sdk" }
+serde.workspace = true
+tracing.workspace = true
