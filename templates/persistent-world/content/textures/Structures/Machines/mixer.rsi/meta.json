@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "size": {
+    "x": 32,
+    "y": 32
+  },
+  "license": "CC-BY-NC-SA-3.0",
+  "copyright": "Made by sentryprimis",
+  "states": [
+    {
+      "name": "mixer_empty",
+      "delays": [
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "name": "mixer_broken",
+      "delays": [
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "name": "mixer_loaded",
+      "delays": [
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "name": "mixer_screens",
+      "delays": [
+        [
+          0.25,
+          0.25,
+          0.25,
+          0.25,
+          0.25,
+          0.25,
+          0.25,
+          0.25,
+          0.25,
+          0.25,
+          0.4,
+          0.4,
+          0.4,
+          0.4,
+          0.3
+        ]
+      ]
+    },
+    {
+      "name": "mixer_screen_broken",
+      "delays": [
+        [
+          1
+        ]
+      ]
+    }
+  ]
+}

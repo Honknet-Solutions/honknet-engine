@@ -1,0 +1,41 @@
+{
+   "version":1,
+   "size":{
+      "x":32,
+      "y":32
+   },
+   "license":"CC-BY-NC-SA-4.0",
+   "copyright":"Gersoon(gersoon458) for WWhiteDreamProject, 13.10.2025",
+    "states":[
+        {
+            "name":"freezerOff",
+            "directions":4
+        },
+        {
+            "name":"freezerPanelOpen",
+            "directions":1
+        },
+        {
+            "name":"freezerOn",
+            "directions":4,
+            "delays":[ [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1] ]
+        },
+        {
+            "name":"heaterOff",
+            "directions":4
+        },
+        {
+            "name":"heaterPanelOpen",
+            "directions":1
+        },
+        {
+            "name":"heaterOn",
+            "directions":4,
+            "delays":[ [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1], [ 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1] ]
+        },
+        {
+            "name":"pipe",
+            "directions":4
+        }
+    ]
+}
