@@ -57,6 +57,70 @@ impl Component for PositionComponent {}
 pub struct VelocityComponent(pub Vec2);
 impl Component for VelocityComponent {}
 
+#[derive(Debug, Clone)]
+pub struct MetadataComponent {
+    pub name: String,
+    pub description: String,
+    pub prototype_id: String,
+}
+impl Component for MetadataComponent {}
+
+#[derive(Debug, Clone)]
+pub struct SpriteComponent {
+    pub rsi_path: String,
+    pub state: String,
+    pub color: u32,
+    pub visible: bool,
+    pub layer: i16,
+    pub direction: u8,
+}
+impl Component for SpriteComponent {}
+
+fn apply_entity_state(world: &mut World, local_entity: Entity, e_state: &honknet_replication::EntityState) {
+    if let Some(pos) = world.get_mut::<PositionComponent>(local_entity) {
+        pos.0 = e_state.position;
+    } else {
+        let _ = world.insert(local_entity, PositionComponent(e_state.position));
+    }
+
+    for comp_state in &e_state.components {
+        match comp_state.component_id {
+            honknet_replication::NET_ID_METADATA => {
+                if let Some(net_meta) = comp_state.decode::<honknet_replication::NetMetadataComponent>() {
+                    let meta = MetadataComponent {
+                        name: net_meta.name,
+                        description: net_meta.description,
+                        prototype_id: net_meta.prototype_id,
+                    };
+                    if let Some(m) = world.get_mut::<MetadataComponent>(local_entity) {
+                        *m = meta;
+                    } else {
+                        let _ = world.insert(local_entity, meta);
+                    }
+                }
+            }
+            honknet_replication::NET_ID_SPRITE => {
+                if let Some(net_sprite) = comp_state.decode::<honknet_replication::NetSpriteComponent>() {
+                    let sprite = SpriteComponent {
+                        rsi_path: net_sprite.rsi_path,
+                        state: net_sprite.state,
+                        color: net_sprite.color,
+                        visible: net_sprite.visible,
+                        layer: net_sprite.layer,
+                        direction: net_sprite.direction,
+                    };
+                    if let Some(s) = world.get_mut::<SpriteComponent>(local_entity) {
+                        *s = sprite;
+                    } else {
+                        let _ = world.insert(local_entity, sprite);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct ClockSynchronizer {
     pub server_tick: u64,
@@ -133,13 +197,7 @@ impl ClientRuntime {
                     new_local
                 };
 
-            if let Some(pos) = self.world.get_mut::<PositionComponent>(local_entity) {
-                pos.0 = e_state.position;
-            } else {
-                let _ = self
-                    .world
-                    .insert(local_entity, PositionComponent(e_state.position));
-            }
+            apply_entity_state(&mut self.world, local_entity, e_state);
         }
     }
 
@@ -148,12 +206,17 @@ impl ClientRuntime {
         self.last_acked_baseline = delta.tick;
 
         for spawn in &delta.spawns {
-            let local_entity = self.world.spawn();
-            self.entity_mapping
-                .insert(ServerEntityId(spawn.entity), LocalEntityId(local_entity));
-            let _ = self
-                .world
-                .insert(local_entity, PositionComponent(spawn.position));
+            let server_id = ServerEntityId(spawn.entity);
+            let local_entity = if let Some(&local_id) = self.entity_mapping.server_to_local.get(&server_id) {
+                local_id.0
+            } else {
+                let new_local = self.world.spawn();
+                self.entity_mapping
+                    .insert(server_id, LocalEntityId(new_local));
+                new_local
+            };
+
+            apply_entity_state(&mut self.world, local_entity, spawn);
         }
 
         for update in &delta.updates {
@@ -162,9 +225,7 @@ impl ClientRuntime {
                 .server_to_local
                 .get(&ServerEntityId(update.entity))
             {
-                if let Some(pos) = self.world.get_mut::<PositionComponent>(local_id.0) {
-                    pos.0 = update.position;
-                }
+                apply_entity_state(&mut self.world, local_id.0, update);
             }
         }
 
@@ -180,13 +241,18 @@ impl ClientRuntime {
             self.input_queue.pop_front();
         }
         self.input_queue.push_back((seq, movement));
-        // Predict local movement
         let dt = if self.tick_rate > 0.0 {
             1.0 / self.tick_rate
         } else {
             1.0 / 30.0
         };
-        self.predicted_position += movement * dt;
+        self.predicted_position += movement * (250.0 * dt);
+
+        self.prediction.record_input(honknet_prediction::InputFrame {
+            tick: self.client_tick,
+            sequence: seq as u32,
+            bytes: vec![],
+        });
     }
 
     pub fn clean_confirmed_input(&mut self, acked_seq: u64) {
@@ -208,8 +274,52 @@ impl ClientRuntime {
         self.world.advance_tick();
         Ok(())
     }
+
+    pub fn extract_render_frame(&mut self) -> RenderFrame {
+        let mut sprites = Vec::new();
+        for entity in self.world.query::<PositionComponent>() {
+            if let Some(pos) = self.world.get::<PositionComponent>(entity) {
+                let uid = ((entity.index as u64) << 32) | (entity.generation as u64);
+                sprites.push(RenderSprite {
+                    render_id: uid,
+                    entity_id: uid,
+                    asset_id: 0,
+                    state_id: 0,
+                    frame_id: 0,
+                    direction: 0,
+                    layer: 0,
+                    x: pos.0.x,
+                    y: pos.0.y,
+                    rotation: 0.0,
+                    scale_x: 1.0,
+                    scale_y: 1.0,
+                    color: 0x00f0ff,
+                    alpha: 1.0,
+                    flags: 0,
+                });
+            }
+        }
+
+        RenderFrame {
+            tick: self.client_tick,
+            interpolation_alpha: 1.0,
+            cameras: vec![RenderCamera {
+                id: 1,
+                x: self.predicted_position.x,
+                y: self.predicted_position.y,
+                zoom: 1.0,
+            }],
+            sprites,
+            tiles: vec![],
+            lights: vec![],
+            particles: vec![],
+            ui_commands: vec![],
+            removals: vec![],
+        }
+    }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderFrame {
     pub tick: u64,
     pub interpolation_alpha: f32,
@@ -222,6 +332,7 @@ pub struct RenderFrame {
     pub removals: Vec<RenderObjectId>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderSprite {
     pub render_id: u64,
     pub entity_id: u64,
@@ -240,6 +351,7 @@ pub struct RenderSprite {
     pub flags: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderCamera {
     pub id: u64,
     pub x: f32,
@@ -247,12 +359,14 @@ pub struct RenderCamera {
     pub zoom: f32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderChunkUpdate {
     pub chunk_x: i32,
     pub chunk_y: i32,
     pub tiles: Vec<u16>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderLight {
     pub id: u64,
     pub x: f32,
@@ -262,6 +376,7 @@ pub struct RenderLight {
     pub radius: f32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderParticle {
     pub id: u64,
     pub x: f32,
@@ -272,6 +387,7 @@ pub struct RenderParticle {
     pub lifetime: f32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenderUiCommand {
     pub command: String,
     pub payload: String,

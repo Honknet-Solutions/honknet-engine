@@ -57,6 +57,16 @@ impl NetworkMessage for ServerWelcomePayload {
     const ID: u16 = 101;
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ClientInputPayload {
+    pub sequence: u32,
+    pub movement: honknet_math::Vec2,
+}
+
+impl NetworkMessage for ClientInputPayload {
+    const ID: u16 = 102;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ConnectionState {
     Disconnected,

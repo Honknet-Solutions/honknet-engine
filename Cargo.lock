@@ -1773,6 +1773,7 @@ dependencies = [
  "bitflags 2.13.1",
  "bytes",
  "crc32fast",
+ "honknet-math",
  "honknet-serialization",
  "serde",
  "thiserror 2.0.19",
@@ -1914,8 +1915,10 @@ dependencies = [
 name = "honknet-replication"
 version = "1.0.0-rc.1"
 dependencies = [
+ "bincode",
  "honknet-core",
  "honknet-math",
+ "honknet-net-core",
  "honknet-serialization",
  "rayon",
  "serde",
@@ -2151,7 +2154,13 @@ name = "honknet-web"
 version = "1.0.0-rc.1"
 dependencies = [
  "console_error_panic_hook",
+ "honknet-client-runtime",
+ "honknet-math",
+ "honknet-net-core",
+ "honknet-replication",
  "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -4137,6 +4146,17 @@ checksum = "4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba"
 dependencies = [
  "serde_core",
  "serde_derive",
+]
+
+[[package]]
+name = "serde-wasm-bindgen"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8302e169f0eddcc139c70f139d19d6467353af16f9fce27e8c30158036a1e16b"
+dependencies = [
+ "js-sys",
+ "serde",
+ "wasm-bindgen",
 ]
 
 [[package]]

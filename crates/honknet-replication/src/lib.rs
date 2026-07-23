@@ -88,6 +88,76 @@ pub struct ComponentState {
     pub mode: ReplicationMode,
 }
 
+impl ComponentState {
+    pub fn encode<T: Serialize>(component_id: ComponentNetId, revision: u64, mode: ReplicationMode, val: &T) -> Self {
+        let bytes = bincode::serde::encode_to_vec(val, bincode::config::standard()).unwrap_or_default();
+        Self {
+            component_id,
+            revision,
+            dirty_mask: DirtyMask::default(),
+            bytes,
+            mode,
+        }
+    }
+
+    pub fn decode<T: for<'de> Deserialize<'de>>(&self) -> Option<T> {
+        let (val, _) = bincode::serde::decode_from_slice(&self.bytes, bincode::config::standard()).ok()?;
+        Some(val)
+    }
+}
+
+pub const NET_ID_TRANSFORM: ComponentNetId = 1;
+pub const NET_ID_SPRITE: ComponentNetId = 2;
+pub const NET_ID_METADATA: ComponentNetId = 3;
+pub const NET_ID_PHYSICS: ComponentNetId = 4;
+pub const NET_ID_MAP_GRID: ComponentNetId = 5;
+pub const NET_ID_CONTAINER: ComponentNetId = 6;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetTransformComponent {
+    pub position: Vec2,
+    pub rotation: f32,
+    pub parent_entity: Option<Entity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetSpriteComponent {
+    pub rsi_path: String,
+    pub state: String,
+    pub color: u32,
+    pub visible: bool,
+    pub layer: i16,
+    pub direction: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetMetadataComponent {
+    pub name: String,
+    pub description: String,
+    pub prototype_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetPhysicsComponent {
+    pub velocity: Vec2,
+    pub angular_velocity: f32,
+    pub mass: f32,
+    pub body_type: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetMapGridComponent {
+    pub grid_id: u32,
+    pub chunk_size: u32,
+    pub tile_size: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetContainerComponent {
+    pub container_id: String,
+    pub contained_entities: Vec<Entity>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntityState {
     pub entity: Entity,
@@ -105,6 +175,10 @@ pub struct Snapshot {
     pub entities: Vec<EntityState>,
 }
 
+impl honknet_net_core::NetworkMessage for Snapshot {
+    const ID: u16 = 200;
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Delta {
     pub tick: u64,
@@ -112,6 +186,10 @@ pub struct Delta {
     pub spawns: Vec<EntityState>,
     pub updates: Vec<EntityState>,
     pub despawns: Vec<Entity>,
+}
+
+impl honknet_net_core::NetworkMessage for Delta {
+    const ID: u16 = 201;
 }
 
 pub struct SnapshotBuilder {
@@ -295,7 +373,11 @@ impl Replicator {
                 .filter(|(k, e)| a.get(k).is_some_and(|o| o.revision != e.revision))
                 .map(|(_, e)| (*e).clone())
                 .collect(),
-            despawns: a.keys().filter(|k| !b.contains_key(k)).copied().collect(),
+            despawns: a
+                .keys()
+                .filter(|k| !b.contains_key(k) && !self.states.contains_key(k))
+                .copied()
+                .collect(),
         })
     }
     pub fn parallel_snapshots(

@@ -6,6 +6,7 @@ license.workspace=true
 
 [dependencies]
 honknet-serialization = { path = "../honknet-serialization" }
+honknet-math = { path = "../honknet-math" }
 serde.workspace = true
 bincode.workspace = true
 bytes.workspace = true

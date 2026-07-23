@@ -1,12 +1,14 @@
 use anyhow::Result;
 use clap::Parser;
-чuse futures_util::{SinkExt, StreamExt};
-use honknet_core::Entity;
+use futures_util::{SinkExt, StreamExt};
 use honknet_math::Vec2;
-use honknet_net_core::{decode_message, encode_message, NetworkMessage};
+use honknet_net_core::{
+    decode_message, encode_message, ClientHelloPayload, ClientInputPayload, ServerWelcomePayload,
+    PROTOCOL_VERSION,
+};
 use honknet_net_server::WsServer;
+use honknet_replication::{EntityState, Snapshot};
 use honknet_runtime::{EngineRuntime, EngineRuntimeConfig, VelocityComponent};
-use serde::{Deserialize, Serialize};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -20,48 +22,6 @@ struct Args {
     tick_rate: u32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Hello {
-    client_version: String,
-}
-
-impl NetworkMessage for Hello {
-    const ID: u16 = 1;
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Input {
-    sequence: u32,
-    movement: Vec2,
-}
-
-impl NetworkMessage for Input {
-    const ID: u16 = 2;
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Welcome {
-    peer: u64,
-    entity: Entity,
-    tick: u64,
-}
-
-impl NetworkMessage for Welcome {
-    const ID: u16 = 3;
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct State {
-    tick: u64,
-    entity: Entity,
-    position: Vec2,
-    velocity: Vec2,
-}
-
-impl NetworkMessage for State {
-    const ID: u16 = 4;
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -69,20 +29,25 @@ async fn main() -> Result<()> {
         .init();
     let args = Args::parse();
 
+    let auth_key = std::env::var("HONKNET_AUTH_KEY").unwrap_or_else(|_| {
+        info!("Notice: Using default development HONKNET_AUTH_KEY");
+        "honknet-auth-key-dev".to_string()
+    });
+    let session_key = std::env::var("HONKNET_SESSION_KEY").unwrap_or_else(|_| {
+        "honknet-session-key-dev".to_string()
+    });
+    let reconnect_key = std::env::var("HONKNET_RECONNECT_KEY").unwrap_or_else(|_| {
+        "honknet-reconnect-key-dev".to_string()
+    });
+
     let mut runtime = EngineRuntime::new(EngineRuntimeConfig {
         tick_rate: args.tick_rate,
         listen_address: args.listen.to_string(),
         persistence_path: None,
         replay_path: None,
-        auth_signing_key: std::env::var("HONKNET_AUTH_KEY")
-            .unwrap_or_else(|_| "honknet-auth-key-1337".to_string())
-            .into_bytes(),
-        session_key: std::env::var("HONKNET_SESSION_KEY")
-            .unwrap_or_else(|_| "honknet-session-key-1337".to_string())
-            .into_bytes(),
-        reconnect_key: std::env::var("HONKNET_RECONNECT_KEY")
-            .unwrap_or_else(|_| "honknet-reconnect-key-1337".to_string())
-            .into_bytes(),
+        auth_signing_key: auth_key.into_bytes(),
+        session_key: session_key.into_bytes(),
+        reconnect_key: reconnect_key.into_bytes(),
     })?;
 
     runtime.initialize();
@@ -91,15 +56,12 @@ async fn main() -> Result<()> {
     runtime.start();
 
     let ws_server = Arc::new(Mutex::new(WsServer::new()));
-
-    // Bind TCP listener for WebSocket connections
     let listener = TcpListener::bind(args.listen).await?;
     info!("Honknet WebSocket Server active on {}", args.listen);
 
     let runtime = Arc::new(Mutex::new(runtime));
     let peer_counter = Arc::new(Mutex::new(1000u64));
 
-    // Spawn TCP accept loop
     let ws_server_clone = Arc::clone(&ws_server);
     let runtime_clone = Arc::clone(&runtime);
     let peer_counter_clone = Arc::clone(&peer_counter);
@@ -115,15 +77,22 @@ async fn main() -> Result<()> {
                 let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
                 ws_server_clone.lock().await.handle_connection(peer_id, tx);
 
-                // Spawn player in runtime
+                // Spawn player entity & send Welcome
                 {
                     let mut r = runtime_clone.lock().await;
-                    let spawn_pos = Vec2::new((peer_id % 8) as f32, 0.);
-                    if let Ok(e) = r.spawn_player(peer_id, spawn_pos) {
-                        let welcome = Welcome {
-                            peer: peer_id,
-                            entity: e,
-                            tick: r.world.tick(),
+                    let spawn_pos = Vec2::new(((peer_id % 8) as f32) * 50.0 - 150.0, 0.0);
+                    if let Ok(_e) = r.spawn_player(peer_id, spawn_pos) {
+                        let welcome = ServerWelcomePayload {
+                            protocol_version: PROTOCOL_VERSION,
+                            engine_version: "1.0.0-rc.1".to_string(),
+                            content_version: "1.0.0".to_string(),
+                            content_manifest_hash: "ss15-manifest".to_string(),
+                            auth_token: Some("auth-ok".to_string()),
+                            reconnect_token: Some(format!("rec-{}", peer_id)),
+                            server_tick: r.world.tick(),
+                            peer_id,
+                            tick_rate: args.tick_rate,
+                            session_token: format!("session-{}", peer_id),
                         };
                         if let Ok((_, payload, _)) = encode_message(&welcome, false) {
                             let mut ws_srv = ws_server_clone.lock().await;
@@ -134,7 +103,7 @@ async fn main() -> Result<()> {
 
                 let (mut ws_sender, mut ws_receiver) = ws.split();
 
-                // Spawn WebSocket writer task
+                // Writer task
                 tokio::spawn(async move {
                     while let Some(bytes) = rx.recv().await {
                         if ws_sender
@@ -149,15 +118,16 @@ async fn main() -> Result<()> {
                     }
                 });
 
-                // Spawn WebSocket reader task
+                // Reader task
                 let runtime_reader = Arc::clone(&runtime_clone);
                 tokio::spawn(async move {
                     while let Some(Ok(msg)) = ws_receiver.next().await {
                         if let tokio_tungstenite::tungstenite::Message::Binary(data) = msg {
-                            if let Ok(input) = decode_message::<Input>(&data, false, 4096) {
+                            if let Ok(input) = decode_message::<ClientInputPayload>(&data, false, 4096) {
                                 let mut r = runtime_reader.lock().await;
                                 if let Some(&e) = r.players.get(&peer_id) {
-                                    let target_vel = input.movement.normalized() * 4.;
+                                    let speed = 250.0;
+                                    let target_vel = input.movement.normalized() * speed;
                                     if let Some(v) = r.world.get_mut::<VelocityComponent>(e) {
                                         v.0 = target_vel;
                                     }
@@ -165,6 +135,8 @@ async fn main() -> Result<()> {
                                         b.velocity = target_vel;
                                     }
                                 }
+                            } else if let Ok(_hello) = decode_message::<ClientHelloPayload>(&data, false, 4096) {
+                                info!("Received ClientHello from peer {}", peer_id);
                             }
                         }
                     }
@@ -185,20 +157,73 @@ async fn main() -> Result<()> {
 
                 let mut ws_srv = ws_server.lock().await;
 
-                // Replicate state over WebSocket connection
+                // Replicate snapshot across connected peers
+                let mut entities_state = Vec::new();
                 for (&peer, &e) in &r.players {
-                    if let Some(b) = r.physics.bodies.get(&e) {
-                        if let Ok((_, payload, _)) = encode_message(
-                            &State {
-                                tick: r.world.tick(),
-                                entity: e,
-                                position: b.position,
-                                velocity: b.velocity,
-                            },
-                            false,
-                        ) {
-                            ws_srv.send_to(peer, payload);
-                        }
+                    let pos = if let Some(b) = r.physics.bodies.get(&e) {
+                        b.position
+                    } else {
+                        Vec2::ZERO
+                    };
+                    let vel = if let Some(b) = r.physics.bodies.get(&e) {
+                        b.velocity
+                    } else {
+                        Vec2::ZERO
+                    };
+
+                    let transform_comp = honknet_replication::ComponentState::encode(
+                        honknet_replication::NET_ID_TRANSFORM,
+                        r.world.tick(),
+                        honknet_replication::ReplicationMode::Replicated,
+                        &honknet_replication::NetTransformComponent {
+                            position: pos,
+                            rotation: 0.0,
+                            parent_entity: None,
+                        },
+                    );
+
+                    let physics_comp = honknet_replication::ComponentState::encode(
+                        honknet_replication::NET_ID_PHYSICS,
+                        r.world.tick(),
+                        honknet_replication::ReplicationMode::Replicated,
+                        &honknet_replication::NetPhysicsComponent {
+                            velocity: vel,
+                            angular_velocity: 0.0,
+                            mass: 70.0,
+                            body_type: 1,
+                        },
+                    );
+
+                    let meta_comp = honknet_replication::ComponentState::encode(
+                        honknet_replication::NET_ID_METADATA,
+                        r.world.tick(),
+                        honknet_replication::ReplicationMode::Replicated,
+                        &honknet_replication::NetMetadataComponent {
+                            name: format!("Player-{}", peer),
+                            description: "Human Engineer".to_string(),
+                            prototype_id: "MobHuman".to_string(),
+                        },
+                    );
+
+                    entities_state.push(EntityState {
+                        entity: e,
+                        revision: r.world.tick(),
+                        position: pos,
+                        owner: Some(peer),
+                        importance: 1.0,
+                        frequency: 1,
+                        components: vec![transform_comp, physics_comp, meta_comp],
+                    });
+                }
+
+                let snapshot = Snapshot {
+                    tick: r.world.tick(),
+                    entities: entities_state,
+                };
+
+                if let Ok((_, payload, _)) = encode_message(&snapshot, false) {
+                    for &peer in r.players.keys() {
+                        ws_srv.send_to(peer, payload.clone());
                     }
                 }
 

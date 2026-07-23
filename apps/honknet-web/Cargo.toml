@@ -9,7 +9,13 @@ crate-type=["cdylib","rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+serde.workspace = true
 web-sys = { version = "0.3", features = ["Window","Document","HtmlCanvasElement","CanvasRenderingContext2d","WebSocket","MessageEvent","BinaryType"] }
 js-sys = "0.3"
 console_error_panic_hook = "0.1"
+honknet-client-runtime = { path = "../../crates/honknet-client-runtime" }
+honknet-net-core = { path = "../../crates/honknet-net-core" }
+honknet-replication = { path = "../../crates/honknet-replication" }
+honknet-math = { path = "../../crates/honknet-math" }
 

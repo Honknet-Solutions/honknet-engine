@@ -7,8 +7,9 @@ import SceneManager from './render/scene/SceneManager';
 import { CameraController } from './render/camera/CameraController';
 import { CameraTransform } from './render/camera/CameraTransform';
 import { BrowserInputAdapter } from './input/BrowserInputAdapter';
-import { WasmBridge } from './bridge/WasmBridge';
+import { WasmBridge, RenderFrame } from './bridge/WasmBridge';
 import { TransportBridge } from './bridge/TransportBridge';
+import { ChunkRenderer } from './render/ChunkRenderer';
 
 async function bootstrap() {
     let canvas = document.querySelector<HTMLCanvasElement>('#game');
@@ -21,7 +22,7 @@ async function bootstrap() {
     canvas.style.height = '100vh';
     canvas.style.display = 'block';
 
-    // 1. Init PixiJS
+    // 1. Init PixiJS Application
     const pixiApp = new PixiApplication();
     await pixiApp.init(canvas);
     const app = pixiApp.getApp();
@@ -39,57 +40,11 @@ async function bootstrap() {
     const cameraTransform = new CameraTransform(sceneManager.worldRoot);
     const cameraController = new CameraController(cameraTransform);
 
-    // 4. Draw Station Tile Grid (Background & Station Floor)
-    const gridGfx = new Graphics();
-    const tileSize = 64;
-    const gridCols = 30;
-    const gridRows = 20;
+    // 4. Chunked Tile Map Renderer
+    const chunkRenderer = new ChunkRenderer(sceneManager.tileLayer);
+    chunkRenderer.initDefaultStationMap();
 
-    for (let r = 0; r < gridRows; r++) {
-        for (let c = 0; c < gridCols; c++) {
-            const x = (c - gridCols / 2) * tileSize;
-            const y = (r - gridRows / 2) * tileSize;
-
-            // Tile fill
-            const isAlt = (r + c) % 2 === 0;
-            gridGfx.rect(x, y, tileSize, tileSize);
-            gridGfx.fill({ color: isAlt ? 0x111625 : 0x0c101c });
-
-            // Grid outline
-            gridGfx.rect(x, y, tileSize, tileSize);
-            gridGfx.stroke({ color: 0x1e293b, width: 1 });
-        }
-    }
-    sceneManager.tileLayer.addChild(gridGfx);
-
-    // Station Walls
-    const wallGfx = new Graphics();
-    const minX = (-gridCols / 2) * tileSize;
-    const maxX = (gridCols / 2) * tileSize;
-    const minY = (-gridRows / 2) * tileSize;
-    const maxY = (gridRows / 2) * tileSize;
-
-    wallGfx.rect(minX, minY, maxX - minX, maxY - minY);
-    wallGfx.stroke({ color: 0x3b82f6, width: 4 });
-    sceneManager.tileLayer.addChild(wallGfx);
-
-    // 5. Interactive Player Entity
-    const playerGfx = new Graphics();
-    playerGfx.circle(0, 0, 20);
-    playerGfx.fill({ color: 0x00f0ff });
-    playerGfx.stroke({ color: 0xffffff, width: 3 });
-
-    // Direction indicator
-    playerGfx.moveTo(0, 0);
-    playerGfx.lineTo(30, 0);
-    playerGfx.stroke({ color: 0xffffff, width: 4 });
-
-    sceneManager.entityLayer.addChild(playerGfx);
-
-    let playerX = 0;
-    let playerY = 0;
-
-    // 6. HUD UI Elements
+    // 5. HUD Elements
     const hudContainer = sceneManager.hudLayer;
 
     const titleStyle = new TextStyle({
@@ -105,7 +60,7 @@ async function bootstrap() {
         },
     });
 
-    const titleText = new Text({ text: 'HONKNET ENGINE v1.0 • WASM + PixiJS 8', style: titleStyle });
+    const titleText = new Text({ text: 'HONKNET SS15 • WASM ClientRuntime + Server Replication Pipeline', style: titleStyle });
     titleText.position.set(20, 20);
     hudContainer.addChild(titleText);
 
@@ -115,22 +70,52 @@ async function bootstrap() {
         fill: '#94a3b8',
     });
     const statusText = new Text({
-        text: 'Backend: WebGPU/WebGL2 | WASM: Ready | Server: Connected (127.0.0.1:3015)\nControls: WASD to Move Player | Mouse to Pan/Zoom',
+        text: 'Connecting to WebSocket server...',
         style: statusStyle,
     });
     statusText.position.set(20, 52);
     hudContainer.addChild(statusText);
 
-    // 7. Input
+    // 6. Input Adapter
     const inputAdapter = new BrowserInputAdapter();
     inputAdapter.attach(canvas);
 
-    // 8. WASM & Transport Bridges
+    // 7. WASM & Network Transport Bridges
     const wasmBridge = new WasmBridge();
     const transportBridge = new TransportBridge();
-    transportBridge.connect('ws://' + window.location.hostname + ':3015');
 
-    // 9. Game Loop (Layout-Independent Controls: KeyW/KeyA/KeyS/KeyD + Russian ЦФЫВ + Arrows)
+    // Dynamically import WASM module if available
+    try {
+        // @ts-ignore
+        const wasmPkg = await import('../pkg/honknet_web.js').catch(() => null);
+        if (wasmPkg) {
+            await wasmPkg.default();
+            const runtime = new wasmPkg.WasmClientRuntime();
+            wasmBridge.setRuntime(runtime);
+            console.log('[WASM] WasmClientRuntime initialized');
+        }
+    } catch (e) {
+        console.warn('[WASM] Direct module load skipped, using bridge fallback:', e);
+    }
+
+    transportBridge.setOnMessage((bytes: Uint8Array) => {
+        wasmBridge.pushNetworkMessage(bytes);
+    });
+
+    const wsUrl = `ws://${window.location.hostname || '127.0.0.1'}:3015`;
+    transportBridge.connect(wsUrl).then(() => {
+        const helloPayload = wasmBridge.createHelloPayload();
+        if (helloPayload) {
+            transportBridge.send(helloPayload);
+        }
+    }).catch((err) => {
+        console.error('[Transport] Connection failed:', err);
+    });
+
+    // 8. Dynamic Entity Graphics Container Map
+    const entityGfxMap = new Map<number, Graphics>();
+
+    // 9. Input & Render Loop
     const keysPressed: Record<string, boolean> = {};
     window.addEventListener('keydown', (e) => {
         keysPressed[e.code] = true;
@@ -141,21 +126,84 @@ async function bootstrap() {
         keysPressed[e.key.toLowerCase()] = false;
     });
 
+    let inputSeq = 1;
+
     const loop = new RenderLoop();
     loop.addCallback((delta: number) => {
-        const speed = 350 * delta;
+        // Collect normalized movement vector
+        let moveX = 0;
+        let moveY = 0;
 
-        const moveUp = keysPressed['KeyW'] || keysPressed['w'] || keysPressed['ц'] || keysPressed['ArrowUp'];
-        const moveDown = keysPressed['KeyS'] || keysPressed['s'] || keysPressed['ы'] || keysPressed['ArrowDown'];
-        const moveLeft = keysPressed['KeyA'] || keysPressed['a'] || keysPressed['ф'] || keysPressed['ArrowLeft'];
-        const moveRight = keysPressed['KeyD'] || keysPressed['d'] || keysPressed['в'] || keysPressed['ArrowRight'];
+        if (keysPressed['KeyW'] || keysPressed['w'] || keysPressed['ц'] || keysPressed['ArrowUp']) moveY -= 1;
+        if (keysPressed['KeyS'] || keysPressed['s'] || keysPressed['ы'] || keysPressed['ArrowDown']) moveY += 1;
+        if (keysPressed['KeyA'] || keysPressed['a'] || keysPressed['ф'] || keysPressed['ArrowLeft']) moveX -= 1;
+        if (keysPressed['KeyD'] || keysPressed['d'] || keysPressed['в'] || keysPressed['ArrowRight']) moveX += 1;
 
-        if (moveUp) playerY -= speed;
-        if (moveDown) playerY += speed;
-        if (moveLeft) playerX -= speed;
-        if (moveRight) playerX += speed;
+        if (moveX !== 0 || moveY !== 0) {
+            const len = Math.hypot(moveX, moveY);
+            moveX /= len;
+            moveY /= len;
 
-        playerGfx.position.set(playerX, playerY);
+            const seq = inputSeq++;
+            wasmBridge.pushInput(seq, moveX, moveY);
+
+            const inputPayload = wasmBridge.createInputPayload(seq, moveX, moveY);
+            if (inputPayload) {
+                transportBridge.send(inputPayload);
+            }
+        }
+
+        // Tick WASM ClientRuntime
+        wasmBridge.tickClient(delta);
+
+        // Extract RenderFrame from WASM and update PixiJS entities
+        const frame: RenderFrame | null = wasmBridge.extractRenderFrame();
+        if (frame) {
+            if (frame.tiles && frame.tiles.length > 0) {
+                for (const tileUpdate of frame.tiles) {
+                    chunkRenderer.updateChunk(tileUpdate);
+                }
+            }
+
+            if (frame.sprites) {
+                const currentRenderIds = new Set<number>();
+
+            for (const sprite of frame.sprites) {
+                currentRenderIds.add(sprite.render_id);
+
+                let gfx = entityGfxMap.get(sprite.render_id);
+                if (!gfx) {
+                    gfx = new Graphics();
+                    gfx.circle(0, 0, 20);
+                    gfx.fill({ color: sprite.color || 0x00f0ff });
+                    gfx.stroke({ color: 0xffffff, width: 3 });
+
+                    gfx.moveTo(0, 0);
+                    gfx.lineTo(30, 0);
+                    gfx.stroke({ color: 0xffffff, width: 4 });
+
+                    sceneManager.entityLayer.addChild(gfx);
+                    entityGfxMap.set(sprite.render_id, gfx);
+                }
+
+                gfx.position.set(sprite.x, sprite.y);
+            }
+
+            // Cleanup despawned / unrendered entities
+            for (const [id, gfx] of entityGfxMap.entries()) {
+                if (!currentRenderIds.has(id)) {
+                    sceneManager.entityLayer.removeChild(gfx);
+                    gfx.destroy();
+                    entityGfxMap.delete(id);
+                }
+            }
+        }
+    }
+
+        // Update HUD Diagnostics
+        statusText.text = `Backend: WebGPU/WebGL2 | WASM: ${wasmBridge.isLoaded() ? 'Loaded' : 'Standalone'} | Server: ${wsUrl}\n` +
+            `Diagnostics: ${wasmBridge.getDiagnostics()}\n` +
+            `Controls: WASD to Move Player (Server Authoritative) | Mouse to Pan/Zoom`;
 
         cameraTransform.updateScreenSize(app.screen.width, app.screen.height);
         cameraController.update(delta);
