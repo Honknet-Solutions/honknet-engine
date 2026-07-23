@@ -1,13 +1,15 @@
 [package]
-name="honknet-server"
-version.workspace=true
-edition.workspace=true
-license.workspace=true
+name = "honknet-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true
@@ -17,9 +19,9 @@ honknet-ecs = { path = "../../crates/honknet-ecs" }
 honknet-math = { path = "../../crates/honknet-math" }
 honknet-physics = { path = "../../crates/honknet-physics" }
 honknet-net-core = { path = "../../crates/honknet-net-core" }
+honknet-net-server = { path = "../../crates/honknet-net-server" }
 honknet-net-transport = { path = "../../crates/honknet-net-transport" }
 honknet-replication = { path = "../../crates/honknet-replication" }
 honknet-runtime = { path = "../../crates/honknet-runtime" }
 honknet-scheduler = { path = "../../crates/honknet-scheduler" }
 honknet-observability = { path = "../../crates/honknet-observability" }
-

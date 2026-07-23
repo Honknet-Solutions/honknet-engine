@@ -1,12 +1,16 @@
 use anyhow::Result;
 use clap::Parser;
+чuse futures_util::{SinkExt, StreamExt};
 use honknet_core::Entity;
 use honknet_math::Vec2;
-use honknet_net_core::{decode_message, encode_message, Channel, NetworkMessage};
-use honknet_net_transport::{NetworkTransport, TransportEvent, UdpTransport};
+use honknet_net_core::{decode_message, encode_message, NetworkMessage};
+use honknet_net_server::WsServer;
 use honknet_runtime::{EngineRuntime, EngineRuntimeConfig, VelocityComponent};
 use serde::{Deserialize, Serialize};
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
+use tokio::net::TcpListener;
+use tokio::sync::Mutex;
+use tracing::info;
 
 #[derive(Parser)]
 struct Args {
@@ -64,7 +68,6 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     let args = Args::parse();
-    let transport = UdpTransport::bind(args.listen).await?;
 
     let mut runtime = EngineRuntime::new(EngineRuntimeConfig {
         tick_rate: args.tick_rate,
@@ -87,6 +90,89 @@ async fn main() -> Result<()> {
     runtime.ready();
     runtime.start();
 
+    let ws_server = Arc::new(Mutex::new(WsServer::new()));
+
+    // Bind TCP listener for WebSocket connections
+    let listener = TcpListener::bind(args.listen).await?;
+    info!("Honknet WebSocket Server active on {}", args.listen);
+
+    let runtime = Arc::new(Mutex::new(runtime));
+    let peer_counter = Arc::new(Mutex::new(1000u64));
+
+    // Spawn TCP accept loop
+    let ws_server_clone = Arc::clone(&ws_server);
+    let runtime_clone = Arc::clone(&runtime);
+    let peer_counter_clone = Arc::clone(&peer_counter);
+
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            if let Ok(ws) = tokio_tungstenite::accept_async(stream).await {
+                let mut p_guard = peer_counter_clone.lock().await;
+                let peer_id = *p_guard;
+                *p_guard += 1;
+                drop(p_guard);
+
+                let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(256);
+                ws_server_clone.lock().await.handle_connection(peer_id, tx);
+
+                // Spawn player in runtime
+                {
+                    let mut r = runtime_clone.lock().await;
+                    let spawn_pos = Vec2::new((peer_id % 8) as f32, 0.);
+                    if let Ok(e) = r.spawn_player(peer_id, spawn_pos) {
+                        let welcome = Welcome {
+                            peer: peer_id,
+                            entity: e,
+                            tick: r.world.tick(),
+                        };
+                        if let Ok((_, payload, _)) = encode_message(&welcome, false) {
+                            let mut ws_srv = ws_server_clone.lock().await;
+                            ws_srv.send_to(peer_id, payload);
+                        }
+                    }
+                }
+
+                let (mut ws_sender, mut ws_receiver) = ws.split();
+
+                // Spawn WebSocket writer task
+                tokio::spawn(async move {
+                    while let Some(bytes) = rx.recv().await {
+                        if ws_sender
+                            .send(tokio_tungstenite::tungstenite::Message::Binary(
+                                bytes.into(),
+                            ))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                });
+
+                // Spawn WebSocket reader task
+                let runtime_reader = Arc::clone(&runtime_clone);
+                tokio::spawn(async move {
+                    while let Some(Ok(msg)) = ws_receiver.next().await {
+                        if let tokio_tungstenite::tungstenite::Message::Binary(data) = msg {
+                            if let Ok(input) = decode_message::<Input>(&data, false, 4096) {
+                                let mut r = runtime_reader.lock().await;
+                                if let Some(&e) = r.players.get(&peer_id) {
+                                    let target_vel = input.movement.normalized() * 4.;
+                                    if let Some(v) = r.world.get_mut::<VelocityComponent>(e) {
+                                        v.0 = target_vel;
+                                    }
+                                    if let Some(b) = r.physics.bodies.get_mut(&e) {
+                                        b.velocity = target_vel;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+    });
+
     let dt = 1. / args.tick_rate.max(1) as f64;
     let mut interval = tokio::time::interval(Duration::from_secs_f64(dt));
 
@@ -94,65 +180,32 @@ async fn main() -> Result<()> {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => break,
             _ = interval.tick() => {
-                for event in transport.poll().await? {
-                    match event {
-                        TransportEvent::Connected(peer, _) => {
-                            let spawn_pos = Vec2::new(peer as f32 % 8., 0.);
-                            let e = runtime.spawn_player(peer, spawn_pos)?;
+                let mut r = runtime.lock().await;
+                r.tick(dt as f32)?;
 
-                            let (_, b, _) = encode_message(
-                                &Welcome {
-                                    peer,
-                                    entity: e,
-                                    tick: runtime.world.tick(),
-                                },
-                                false,
-                            )?;
-                            transport.send(peer, Channel::Control, Welcome::ID, &b).await?;
-                        }
-                        TransportEvent::Data(peer, _, kind, data) => {
-                            if kind == Input::ID {
-                                if let Ok(i) = decode_message::<Input>(&data, false, 4096) {
-                                    if let Some(&e) = runtime.players.get(&peer) {
-                                        let target_vel = i.movement.normalized() * 4.;
-                                        if let Some(v) = runtime.world.get_mut::<VelocityComponent>(e) {
-                                            v.0 = target_vel;
-                                        }
-                                        if let Some(b) = runtime.physics.bodies.get_mut(&e) {
-                                            b.velocity = target_vel;
-                                        }
-                                    }
-                                }
-                            } else if kind == Hello::ID {
-                                let _ = decode_message::<Hello>(&data, false, 4096);
-                            }
-                        }
-                        TransportEvent::Disconnected(peer, _) => {
-                            runtime.despawn_player(peer)?;
-                        }
-                    }
-                }
+                let mut ws_srv = ws_server.lock().await;
 
-                // Tick full EngineRuntime kernel
-                runtime.tick(dt as f32)?;
-
-                // Replicate state over network transport
-                for (&peer, &e) in &runtime.players {
-                    if let Some(b) = runtime.physics.bodies.get(&e) {
-                        let (_, payload, _) = encode_message(
+                // Replicate state over WebSocket connection
+                for (&peer, &e) in &r.players {
+                    if let Some(b) = r.physics.bodies.get(&e) {
+                        if let Ok((_, payload, _)) = encode_message(
                             &State {
-                                tick: runtime.world.tick(),
+                                tick: r.world.tick(),
                                 entity: e,
                                 position: b.position,
                                 velocity: b.velocity,
                             },
                             false,
-                        )?;
-                        transport.send(peer, Channel::UnreliableSequenced, State::ID, &payload).await?;
+                        ) {
+                            ws_srv.send_to(peer, payload);
+                        }
                     }
                 }
+
+                ws_srv.update();
             }
         }
     }
+
     Ok(())
 }
