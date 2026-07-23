@@ -219,6 +219,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "hex",
  "serde",
  "serde_json",
  "sha2",
@@ -1759,6 +1760,7 @@ version = "1.0.0-rc.1"
 dependencies = [
  "honknet-net-core",
  "js-sys",
+ "serde",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -1781,6 +1783,8 @@ dependencies = [
 name = "honknet-net-server"
 version = "1.0.0-rc.1"
 dependencies = [
+ "anyhow",
+ "futures-util",
  "honknet-net-core",
  "tokio",
  "tokio-tungstenite",

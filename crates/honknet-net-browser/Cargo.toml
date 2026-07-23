@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 honknet-net-core = { path = "../honknet-net-core" }
+serde = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

@@ -1,6 +1,9 @@
+use futures_util::{SinkExt, StreamExt};
 use honknet_net_core::*;
 use std::collections::{HashMap, VecDeque};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc;
+use tracing::info;
 
 #[derive(Default)]
 pub struct ServerMetrics {
@@ -51,12 +54,60 @@ impl WsServer {
         }
     }
 
+    pub fn send_to(&mut self, id: u64, payload: Vec<u8>) {
+        if let Some(client) = self.clients.get_mut(&id) {
+            client.send_queue.push_back(payload);
+        }
+    }
+
     pub fn update(&mut self) {
-        // Backpressure, rate limits, flush per-client queues.
         for client in self.clients.values_mut() {
             while let Some(msg) = client.send_queue.pop_front() {
                 let _ = client.tx.try_send(msg);
             }
+        }
+    }
+
+    pub async fn bind_and_listen(&mut self, addr: &str) -> anyhow::Result<()> {
+        let listener = TcpListener::bind(addr).await?;
+        info!("Honknet WebSocket Server listening on {}", addr);
+
+        let mut peer_id_gen = 1000u64;
+
+        loop {
+            let (stream, peer_addr) = listener.accept().await?;
+            info!("Accepted TCP connection from {}", peer_addr);
+
+            let ws_stream = tokio_tungstenite::accept_async(stream).await?;
+            let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+
+            let (tx, mut rx) = mpsc::channel::<Vec<u8>>(256);
+            let peer_id = peer_id_gen;
+            peer_id_gen += 1;
+
+            self.handle_connection(peer_id, tx);
+
+            // Spawn writer loop
+            tokio::spawn(async move {
+                while let Some(msg) = rx.recv().await {
+                    if ws_sender
+                        .send(tokio_tungstenite::tungstenite::Message::Binary(msg.into()))
+                        .await
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            });
+
+            // Spawn reader loop
+            tokio::spawn(async move {
+                while let Some(Ok(msg)) = ws_receiver.next().await {
+                    if msg.is_close() {
+                        break;
+                    }
+                }
+            });
         }
     }
 }

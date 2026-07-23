@@ -8,4 +8,6 @@ license.workspace = true
 honknet-net-core = { path = "../honknet-net-core" }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+anyhow = { workspace = true }
 tracing = { workspace = true }
