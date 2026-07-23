@@ -1,47 +1,25 @@
 use parking_lot::Mutex;
-use rusqlite::{
-    params,
-    Connection
-};
-use serde::{
-    Serialize,
-    de::DeserializeOwned
-};
-use sha2::{
-    Digest,
-    Sha256
-};
+use rusqlite::{params, Connection};
+use serde::{de::DeserializeOwned, Serialize};
+use sha2::{Digest, Sha256};
 use std::{
-    fs::{
-        self,
-        OpenOptions
-    },
+    fs::{self, OpenOptions},
     io::Write,
-    path::{
-        Path,
-        PathBuf
-    },
+    path::{Path, PathBuf},
     sync::Arc,
-    time::{
-        SystemTime,
-        UNIX_EPOCH
-    }
+    time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum PersistenceError {
     #[error("I/O: {0}")]
-    Io(
-    #[from]
-    std::io::Error),
+    Io(#[from] std::io::Error),
     #[error("SQL: {0}")]
-    Sql(
-    #[from]
-    rusqlite::Error),
+    Sql(#[from] rusqlite::Error),
     #[error("codec: {0}")]
     Codec(String),
     #[error("checksum mismatch")]
-    Checksum
+    Checksum,
 }
 
 pub trait PersistenceBackend: Send + Sync {
@@ -57,7 +35,7 @@ pub trait PersistenceBackend: Send + Sync {
 pub struct FileBackend {
     root: PathBuf,
     lock: Arc<Mutex<()>>,
-    backups: usize
+    backups: usize,
 }
 
 impl FileBackend {
@@ -65,7 +43,7 @@ impl FileBackend {
         Self {
             root: root.into(),
             lock: Default::default(),
-            backups: backups.max(1)
+            backups: backups.max(1),
         }
     }
     fn dir(&self, w: &str) -> PathBuf {
@@ -77,7 +55,7 @@ impl PersistenceBackend for FileBackend {
     fn load(&self, w: &str) -> Result<Option<Vec<u8>>, PersistenceError> {
         let p = self.dir(w).join("checkpoint.bin");
         if !p.is_file() {
-            return Ok(None)
+            return Ok(None);
         }
         let b = fs::read(&p)?;
         verify_blob(&b).map(Some)
@@ -86,9 +64,15 @@ impl PersistenceBackend for FileBackend {
         let _g = self.lock.lock();
         let d = self.dir(w);
         fs::create_dir_all(&d)?;
-        let seq = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
+        let seq = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
         let blob = make_blob(data);
-        let mut f = OpenOptions::new().create(true).append(true).open(d.join("journal.log"))?;
+        let mut f = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(d.join("journal.log"))?;
         f.write_all(&(blob.len() as u64).to_le_bytes())?;
         f.write_all(&seq.to_le_bytes())?;
         f.write_all(&blob)?;
@@ -108,14 +92,16 @@ impl PersistenceBackend for FileBackend {
                 let len = u64::from_le_bytes(b[p..p + 8].try_into().unwrap()) as usize;
                 p += 16;
                 if p + len > b.len() {
-                    break
+                    break;
                 }
                 latest = Some(verify_blob(&b[p..p + len])?);
                 p += len
             }
         }
-        let data = latest.or_else(||self.load(w).ok().flatten()).unwrap_or_default();
-        for i in(1..self.backups).rev() {
+        let data = latest
+            .or_else(|| self.load(w).ok().flatten())
+            .unwrap_or_default();
+        for i in (1..self.backups).rev() {
             let from = d.join(format!("checkpoint.{}.bin", i - 1));
             let to = d.join(format!("checkpoint.{i}.bin"));
             if from.exists() {
@@ -138,7 +124,7 @@ impl PersistenceBackend for FileBackend {
 }
 
 pub struct SqliteBackend {
-    conn: Mutex<Connection>
+    conn: Mutex<Connection>,
 }
 
 impl SqliteBackend {
@@ -146,7 +132,7 @@ impl SqliteBackend {
         let c = Connection::open(path)?;
         c.execute_batch("PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS worlds(key TEXT PRIMARY KEY, revision INTEGER NOT NULL, data BLOB NOT NULL, checksum TEXT NOT NULL);")?;
         Ok(Self {
-            conn: Mutex::new(c)
+            conn: Mutex::new(c),
         })
     }
 }
@@ -160,7 +146,7 @@ impl PersistenceBackend for SqliteBackend {
             let b: Vec<u8> = r.get(0)?;
             let h: String = r.get(1)?;
             if hex::encode(Sha256::digest(&b)) != h {
-                return Err(PersistenceError::Checksum)
+                return Err(PersistenceError::Checksum);
             }
             Ok(Some(b))
         } else {
@@ -169,7 +155,10 @@ impl PersistenceBackend for SqliteBackend {
     }
     fn commit(&self, w: &str, data: &[u8]) -> Result<u64, PersistenceError> {
         let c = self.conn.lock();
-        let rev = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64;
+        let rev = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
         c.execute("INSERT INTO worlds(key, revision, data, checksum) VALUES(?1,?2,?3,?4) ON CONFLICT(key) DO UPDATE SET revision=excluded.revision, data=excluded.data, checksum=excluded.checksum",
         params![w, rev as i64, data, hex::encode(Sha256::digest(data))])?;
         Ok(rev)
@@ -181,7 +170,13 @@ impl PersistenceBackend for SqliteBackend {
 }
 
 pub trait PostgresConnection: Send + Sync {
-    fn execute_transaction(&self, world: &str, revision: u64, data: &[u8], checksum: &str) -> Result<(), PersistenceError>;
+    fn execute_transaction(
+        &self,
+        world: &str,
+        revision: u64,
+        data: &[u8],
+        checksum: &str,
+    ) -> Result<(), PersistenceError>;
     fn query_world(&self, world: &str) -> Result<Option<Vec<u8>>, PersistenceError>;
 }
 
@@ -193,28 +188,41 @@ fn make_blob(data: &[u8]) -> Vec<u8> {
 
 fn verify_blob(b: &[u8]) -> Result<Vec<u8>, PersistenceError> {
     if b.len() < 32 {
-        return Err(PersistenceError::Checksum)
+        return Err(PersistenceError::Checksum);
     }
     let d = &b[32..];
     if Sha256::digest(d).as_slice() != &b[..32] {
-        return Err(PersistenceError::Checksum)
+        return Err(PersistenceError::Checksum);
     }
     Ok(d.to_vec())
 }
 
 fn safe(s: &str) -> String {
-    s.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-        c
-    } else {
-        '_'
-    }).collect()
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
-pub fn save_typed<T: Serialize>(b: &dyn PersistenceBackend, w: &str, v: &T) -> Result<u64, PersistenceError> {
+pub fn save_typed<T: Serialize>(
+    b: &dyn PersistenceBackend,
+    w: &str,
+    v: &T,
+) -> Result<u64, PersistenceError> {
     let d = serde_json::to_vec(v).map_err(|e| PersistenceError::Codec(e.to_string()))?;
     b.commit(w, &d)
 }
 
-pub fn load_typed<T: DeserializeOwned>(b: &dyn PersistenceBackend, w: &str) -> Result<Option<T>, PersistenceError> {
-    b.load(w)?.map(|d| serde_json::from_slice(&d).map_err(|e| PersistenceError::Codec(e.to_string()))).transpose()
+pub fn load_typed<T: DeserializeOwned>(
+    b: &dyn PersistenceBackend,
+    w: &str,
+) -> Result<Option<T>, PersistenceError> {
+    b.load(w)?
+        .map(|d| serde_json::from_slice(&d).map_err(|e| PersistenceError::Codec(e.to_string())))
+        .transpose()
 }

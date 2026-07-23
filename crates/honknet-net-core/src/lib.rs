@@ -177,6 +177,7 @@ pub fn update_ack(latest: &mut u32, bits: &mut u32, seq: u32) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn fragment(
     kind: u16,
     channel: Channel,

@@ -2,11 +2,7 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
-use std::{
-    collections::HashMap,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use thiserror::Error;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Prototype {

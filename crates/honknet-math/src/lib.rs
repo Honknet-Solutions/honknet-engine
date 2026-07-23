@@ -1,31 +1,15 @@
-use serde::{
-    Deserialize,
-    Serialize
-};
-use std::ops::{
-    Add,
-    AddAssign,
-    Div,
-    Mul,
-    Sub,
-    SubAssign
-};
+use serde::{Deserialize, Serialize};
+use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Vec2 {
     pub x: f32,
-    pub y: f32
+    pub y: f32,
 }
 
 impl Vec2 {
-    pub const ZERO: Self = Self {
-        x: 0.,
-        y: 0.
-    };
+    pub const ZERO: Self = Self { x: 0., y: 0. };
     pub const fn new(x: f32, y: f32) -> Self {
-        Self {
-            x,
-            y
-        }
+        Self { x, y }
     }
     pub fn dot(self, o: Self) -> f32 {
         self.x * o.x + self.y * o.y
@@ -51,7 +35,7 @@ impl Vec2 {
         Self::new(-self.y, self.x)
     }
     pub fn rotate(self, a: f32) -> Self {
-        let(c, s) =(a.cos(), a.sin());
+        let (c, s) = (a.cos(), a.sin());
         Self::new(self.x * c - self.y * s, self.x * s + self.y * c)
     }
     pub fn min(self, o: Self) -> Self {
@@ -105,24 +89,27 @@ impl SubAssign for Vec2 {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Aabb {
     pub min: Vec2,
-    pub max: Vec2
+    pub max: Vec2,
 }
 
 impl Aabb {
     pub fn from_center_half(c: Vec2, h: Vec2) -> Self {
         Self {
             min: c - h,
-            max: c + h
+            max: c + h,
         }
     }
     pub fn union(self, o: Self) -> Self {
         Self {
             min: self.min.min(o.min),
-            max: self.max.max(o.max)
+            max: self.max.max(o.max),
         }
     }
     pub fn intersects(self, o: Self) -> bool {
-        self.min.x <= o.max.x && self.max.x >= o.min.x && self.min.y <= o.max.y && self.max.y >= o.min.y
+        self.min.x <= o.max.x
+            && self.max.x >= o.min.x
+            && self.min.y <= o.max.y
+            && self.max.y >= o.min.y
     }
     pub fn contains(self, p: Vec2) -> bool {
         p.x >= self.min.x && p.x <= self.max.x && p.y >= self.min.y && p.y <= self.max.y
@@ -130,7 +117,7 @@ impl Aabb {
     pub fn expanded(self, v: f32) -> Self {
         Self {
             min: self.min - Vec2::new(v, v),
-            max: self.max + Vec2::new(v, v)
+            max: self.max + Vec2::new(v, v),
         }
     }
 }
@@ -139,7 +126,7 @@ impl Aabb {
 pub struct Transform2 {
     pub translation: Vec2,
     pub rotation: f32,
-    pub scale: Vec2
+    pub scale: Vec2,
 }
 
 impl Default for Transform2 {
@@ -147,12 +134,17 @@ impl Default for Transform2 {
         Self {
             translation: Vec2::ZERO,
             rotation: 0.,
-            scale: Vec2::new(1., 1.)
+            scale: Vec2::new(1., 1.),
         }
     }
 }
 
 impl Transform2 {
+    pub const IDENTITY: Self = Self {
+        translation: Vec2::ZERO,
+        rotation: 0.,
+        scale: Vec2::new(1., 1.),
+    };
     pub fn point(self, p: Vec2) -> Vec2 {
         Vec2::new(p.x * self.scale.x, p.y * self.scale.y).rotate(self.rotation) + self.translation
     }
@@ -160,7 +152,7 @@ impl Transform2 {
         Self {
             translation: self.point(child.translation),
             rotation: self.rotation + child.rotation,
-            scale: Vec2::new(self.scale.x * child.scale.x, self.scale.y * child.scale.y)
+            scale: Vec2::new(self.scale.x * child.scale.x, self.scale.y * child.scale.y),
         }
     }
 }

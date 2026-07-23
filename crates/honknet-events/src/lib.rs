@@ -57,4 +57,7 @@ impl EventBus {
             .get(&TypeId::of::<T>())
             .map_or(0, Vec::len)
     }
+    pub fn is_empty<T: Any>(&self) -> bool {
+        self.len::<T>() == 0
+    }
 }

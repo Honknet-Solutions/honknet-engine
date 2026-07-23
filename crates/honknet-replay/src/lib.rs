@@ -126,6 +126,7 @@ impl ReplayReader {
         self.file.seek(SeekFrom::Start(pos))?;
         Ok(())
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<ReplayEvent>, ReplayError> {
         let p = self.file.stream_position()?;
         let end = self.events_end;

@@ -1627,8 +1627,12 @@ name = "honknet-integration-tests"
 version = "1.0.0-rc.1"
 dependencies = [
  "honknet-core",
+ "honknet-ecs",
  "honknet-map",
  "honknet-math",
+ "honknet-persistence",
+ "honknet-physics",
+ "honknet-replay",
  "honknet-testing",
  "tokio",
 ]

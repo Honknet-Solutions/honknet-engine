@@ -1,23 +1,13 @@
 use honknet_math::Vec2;
-use rodio::{
-    Decoder,
-    OutputStream,
-    OutputStreamHandle,
-    Sink,
-    Source
-};
-use std::{
-    collections::HashMap,
-    io::Cursor,
-    sync::Arc
-};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use std::{collections::HashMap, io::Cursor, sync::Arc};
 use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum AudioError {
     #[error("backend: {0}")]
     Backend(String),
     #[error("decode: {0}")]
-    Decode(String)
+    Decode(String),
 }
 
 #[derive(Debug, Clone)]
@@ -30,7 +20,7 @@ pub struct SoundParams {
     pub bus: String,
     pub priority: i32,
     pub max_distance: f32,
-    pub reverb: f32
+    pub reverb: f32,
 }
 
 impl Default for SoundParams {
@@ -44,7 +34,7 @@ impl Default for SoundParams {
             bus: "master".into(),
             priority: 0,
             max_distance: 32.,
-            reverb: 0.
+            reverb: 0.,
         }
     }
 }
@@ -58,7 +48,7 @@ pub trait AudioBackend: Send {
 
 struct Voice {
     sink: Sink,
-    params: SoundParams
+    params: SoundParams,
 }
 
 pub struct NativeAudio {
@@ -69,17 +59,23 @@ pub struct NativeAudio {
     listener_velocity: Vec2,
     next: u64,
     buses: HashMap<String, f32>,
-    limit: usize
+    limit: usize,
 }
 
 unsafe impl Send for NativeAudio {}
 
 impl NativeAudio {
     pub fn new(limit: usize) -> Result<Self, AudioError> {
-        let(s, h) = OutputStream::try_default().map_err(|e| AudioError::Backend(e.to_string()))?;
+        let (s, h) = OutputStream::try_default().map_err(|e| AudioError::Backend(e.to_string()))?;
         Ok(Self {
-            _stream: s, handle: h, voices: HashMap::new(), listener: Vec2::ZERO, listener_velocity: Vec2::ZERO,
-            next: 1, buses: HashMap::from([("master".into(), 1.)]), limit: limit.max(1)
+            _stream: s,
+            handle: h,
+            voices: HashMap::new(),
+            listener: Vec2::ZERO,
+            listener_velocity: Vec2::ZERO,
+            next: 1,
+            buses: HashMap::from([("master".into(), 1.)]),
+            limit: limit.max(1),
         })
     }
     pub fn set_bus(&mut self, n: &str, v: f32) {
@@ -90,11 +86,17 @@ impl NativeAudio {
 impl AudioBackend for NativeAudio {
     fn play(&mut self, data: Arc<Vec<u8>>, params: SoundParams) -> Result<u64, AudioError> {
         if self.voices.len() >= self.limit {
-            if let Some(id) = self.voices.iter().min_by_key(|(_, v)| v.params.priority).map(|(i, _)| *i) {
+            if let Some(id) = self
+                .voices
+                .iter()
+                .min_by_key(|(_, v)| v.params.priority)
+                .map(|(i, _)| *i)
+            {
                 self.stop(id)
             }
         }
-        let decoder = Decoder::new(Cursor::new((*data).clone())).map_err(|e| AudioError::Decode(e.to_string()))?;
+        let decoder = Decoder::new(Cursor::new((*data).clone()))
+            .map_err(|e| AudioError::Decode(e.to_string()))?;
         let sink = Sink::try_new(&self.handle).map_err(|e| AudioError::Backend(e.to_string()))?;
         if params.looping {
             sink.append(decoder.repeat_infinite().speed(params.pitch.max(0.1)))
@@ -103,9 +105,7 @@ impl AudioBackend for NativeAudio {
         }
         let id = self.next;
         self.next += 1;
-        self.voices.insert(id, Voice {
-            sink, params
-        });
+        self.voices.insert(id, Voice { sink, params });
         self.update();
         Ok(id)
     }
@@ -120,8 +120,11 @@ impl AudioBackend for NativeAudio {
     }
     fn update(&mut self) {
         self.voices.retain(|_, v| {
-            let distance = v.params.position.map_or(0., |p|(p - self.listener).length());
-            let attenuation =(1. - distance / v.params.max_distance.max(0.1)).clamp(0., 1.);
+            let distance = v
+                .params
+                .position
+                .map_or(0., |p| (p - self.listener).length());
+            let attenuation = (1. - distance / v.params.max_distance.max(0.1)).clamp(0., 1.);
             let bus = *self.buses.get(&v.params.bus).unwrap_or(&1.);
             v.sink.set_volume(v.params.volume * attenuation * bus);
             !v.sink.empty() || v.params.looping
@@ -132,7 +135,7 @@ impl AudioBackend for NativeAudio {
 #[derive(Default)]
 pub struct NullAudio {
     pub played: u64,
-    pub listener: Vec2
+    pub listener: Vec2,
 }
 
 impl AudioBackend for NullAudio {
@@ -140,11 +143,9 @@ impl AudioBackend for NullAudio {
         self.played += 1;
         Ok(self.played)
     }
-    fn stop(&mut self, _: u64) {
-    }
+    fn stop(&mut self, _: u64) {}
     fn set_listener(&mut self, p: Vec2, _: Vec2) {
         self.listener = p
     }
-    fn update(&mut self) {
-    }
+    fn update(&mut self) {}
 }

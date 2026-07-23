@@ -1,24 +1,19 @@
 use anyhow::Result;
-use bytemuck::{
-    Pod,
-    Zeroable
-};
+use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
     event::*,
     event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window, WindowId}
+    window::{Window, WindowId},
 };
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct Vertex {
-    pos:[f32;
-    2],
-    color:[f32;
-    3]
+    pos: [f32; 2],
+    color: [f32; 3],
 }
 
 struct State {
@@ -28,7 +23,7 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     vertex: wgpu::Buffer,
-    _start: std::time::Instant
+    _start: std::time::Instant,
 }
 
 impl State {
@@ -36,15 +31,32 @@ impl State {
         let size = window.inner_size();
         let instance = wgpu::Instance::new(&Default::default());
         let surface = instance.create_surface(window)?;
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance, compatible_surface: Some(&surface), force_fallback_adapter: false
-        }).await.ok_or_else(|| anyhow::anyhow!("failed to find an appropriate adapter"))?;
-        let(device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("Honknet client"), required_features: wgpu::Features::empty(), required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::Performance
-        }, None).await?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .ok_or_else(|| anyhow::anyhow!("failed to find an appropriate adapter"))?;
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("Honknet client"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: wgpu::Limits::default(),
+                    memory_hints: wgpu::MemoryHints::Performance,
+                },
+                None,
+            )
+            .await?;
         let caps = surface.get_capabilities(&adapter);
-        let format = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(caps.formats[0]);
+        let format = caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format,
@@ -53,43 +65,81 @@ impl State {
             present_mode: wgpu::PresentMode::Fifo,
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
-            desired_maximum_frame_latency: 2
+            desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("client shader"), source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into())
+            label: Some("client shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("client pipeline"), layout: None, vertex: wgpu::VertexState {
-                module: &shader, entry_point: Some("vs"), compilation_options: Default::default(), buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<Vertex>() as u64, step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x3]
-                }]
-            }, fragment: Some(wgpu::FragmentState {
-                module: &shader, entry_point: Some("fs"), compilation_options: Default::default(), targets: &[Some(wgpu::ColorTargetState {
-                    format, blend: Some(wgpu::BlendState::ALPHA_BLENDING), write_mask: wgpu::ColorWrites::ALL
-                })]
-            }), primitive: wgpu::PrimitiveState::default(), depth_stencil: None, multisample: Default::default(),
-            multiview: None, cache: None
+            label: Some("client pipeline"),
+            layout: None,
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs"),
+                compilation_options: Default::default(),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Vertex>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x3],
+                }],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview: None,
+            cache: None,
         });
-        let vertices =[Vertex {
-            pos:[-0.08,-0.08], color:[0., 1., 0.8]
-        }, Vertex {
-            pos:[0.08,-0.08], color:[0.1, 0.7, 1.]
-        }, Vertex {
-            pos:[0.08, 0.08], color:[1., 0.2, 0.8]
-        }, Vertex {
-            pos:[-0.08,-0.08], color:[0., 1., 0.8]
-        }, Vertex {
-            pos:[0.08, 0.08], color:[1., 0.2, 0.8]
-        }, Vertex {
-            pos:[-0.08, 0.08], color:[0.2, 0.5, 1.]
-        }];
+        let vertices = [
+            Vertex {
+                pos: [-0.08, -0.08],
+                color: [0., 1., 0.8],
+            },
+            Vertex {
+                pos: [0.08, -0.08],
+                color: [0.1, 0.7, 1.],
+            },
+            Vertex {
+                pos: [0.08, 0.08],
+                color: [1., 0.2, 0.8],
+            },
+            Vertex {
+                pos: [-0.08, -0.08],
+                color: [0., 1., 0.8],
+            },
+            Vertex {
+                pos: [0.08, 0.08],
+                color: [1., 0.2, 0.8],
+            },
+            Vertex {
+                pos: [-0.08, 0.08],
+                color: [0.2, 0.5, 1.],
+            },
+        ];
         let vertex = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("quad"), contents: bytemuck::cast_slice(&vertices), usage: wgpu::BufferUsages::VERTEX
+            label: Some("quad"),
+            contents: bytemuck::cast_slice(&vertices),
+            usage: wgpu::BufferUsages::VERTEX,
         });
         Ok(Self {
-            surface, device, queue, config, pipeline, vertex, _start: std::time::Instant::now()
+            surface,
+            device,
+            queue,
+            config,
+            pipeline,
+            vertex,
+            _start: std::time::Instant::now(),
         })
     }
     fn resize(&mut self, w: u32, h: u32) {
@@ -103,13 +153,23 @@ impl State {
         let mut e = self.device.create_command_encoder(&Default::default());
         {
             let mut p = e.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Honknet frame"), color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view, resolve_target: None, ops: wgpu::Operations {
+                label: Some("Honknet frame"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.015, g: 0.02, b: 0.04, a: 1.
-                        }), store: wgpu::StoreOp::Store
-                    }
-                })], depth_stencil_attachment: None, timestamp_writes: None, occlusion_query_set: None
+                            r: 0.015,
+                            g: 0.02,
+                            b: 0.04,
+                            a: 1.,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
             });
             p.set_pipeline(&self.pipeline);
             p.set_vertex_buffer(0, self.vertex.slice(..));
@@ -148,14 +208,14 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(s) => state.resize(s.width, s.height),
-            WindowEvent::RedrawRequested => {
-                match state.render() {
-                    Ok(()) => {},
-                    Err(wgpu::SurfaceError::Lost) => state.resize(state.config.width, state.config.height),
-                    Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
-                    Err(_) => {}
+            WindowEvent::RedrawRequested => match state.render() {
+                Ok(()) => {}
+                Err(wgpu::SurfaceError::Lost) => {
+                    state.resize(state.config.width, state.config.height)
                 }
-            }
+                Err(wgpu::SurfaceError::OutOfMemory) => event_loop.exit(),
+                Err(_) => {}
+            },
             _ => {}
         }
     }

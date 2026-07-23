@@ -65,6 +65,7 @@ pub fn get_var_u64(input: &mut &[u8]) -> Result<u64, CodecError> {
     Err(CodecError::Codec("varint overflow".into()))
 }
 
+#[derive(Default)]
 pub struct BitWriter {
     bytes: Vec<u8>,
     bit: u8,

@@ -8,6 +8,12 @@ pub struct HeadlessHarness {
     pub world: World,
 }
 
+impl Default for HeadlessHarness {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HeadlessHarness {
     pub fn new() -> Self {
         let (s, c) = LoopbackTransport::pair();

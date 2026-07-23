@@ -75,6 +75,8 @@ trait ErasedStorage: Send + Sync {
     fn remove(&mut self, e: Entity);
     fn has(&self, e: Entity) -> bool;
     fn changed(&self, e: Entity) -> Option<u64>;
+    fn on_initialize(&mut self, e: Entity);
+    fn on_start(&mut self, e: Entity);
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
@@ -142,6 +144,16 @@ impl<T: Component> ErasedStorage for PackedStorage<T> {
     fn changed(&self, e: Entity) -> Option<u64> {
         self.changed.get(&e).copied()
     }
+    fn on_initialize(&mut self, e: Entity) {
+        if let Some(&i) = self.indices.get(&e) {
+            self.values[i].on_initialize(e);
+        }
+    }
+    fn on_start(&mut self, e: Entity) {
+        if let Some(&i) = self.indices.get(&e) {
+            self.values[i].on_start(e);
+        }
+    }
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -178,6 +190,16 @@ impl<T: Component> ErasedStorage for SparseStorage<T> {
     fn changed(&self, e: Entity) -> Option<u64> {
         self.changed.get(&e).copied()
     }
+    fn on_initialize(&mut self, e: Entity) {
+        if let Some(v) = self.values.get_mut(&e) {
+            v.on_initialize(e);
+        }
+    }
+    fn on_start(&mut self, e: Entity) {
+        if let Some(v) = self.values.get_mut(&e) {
+            v.on_start(e);
+        }
+    }
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -203,6 +225,7 @@ impl Resources {
     }
 }
 
+#[derive(Default)]
 pub struct World {
     allocator: EntityAllocator,
     lifecycle: HashMap<Entity, Lifecycle>,
@@ -210,19 +233,6 @@ pub struct World {
     kinds: HashMap<TypeId, StorageKind>,
     tick: u64,
     pub resources: Resources,
-}
-
-impl Default for World {
-    fn default() -> Self {
-        Self {
-            allocator: Default::default(),
-            lifecycle: HashMap::new(),
-            storages: HashMap::new(),
-            kinds: HashMap::new(),
-            tick: 0,
-            resources: Default::default(),
-        }
-    }
 }
 
 impl World {
@@ -342,12 +352,31 @@ impl World {
             return Err(EcsError::Stale(e));
         }
         self.lifecycle.insert(e, Lifecycle::Initialized);
+        for s in self.storages.values_mut() {
+            s.on_initialize(e);
+        }
         self.lifecycle.insert(e, Lifecycle::Started);
+        for s in self.storages.values_mut() {
+            s.on_start(e);
+        }
         self.lifecycle.insert(e, Lifecycle::Active);
         Ok(())
     }
+    pub fn remove_component<T: Component>(&mut self, e: Entity) -> bool {
+        if !self.is_alive(e) {
+            return false;
+        }
+        if let Some(s) = self.storages.get_mut(&TypeId::of::<T>()) {
+            if s.has(e) {
+                s.remove(e);
+                return true;
+            }
+        }
+        false
+    }
 }
 
+#[allow(clippy::type_complexity)]
 pub enum Command {
     Spawn(Vec<Box<dyn FnOnce(&mut World, Entity) + Send>>),
     Despawn(Entity),
@@ -392,6 +421,7 @@ pub type SharedWorld = Arc<RwLock<World>>;
 mod tests {
     use super::*;
     #[derive(Debug)]
+    #[allow(dead_code)]
     struct Pos(i32);
     impl Component for Pos {}
     #[test]
@@ -414,5 +444,15 @@ mod tests {
         });
         c.apply(&mut w).unwrap();
         assert_eq!(w.query::<Pos>().len(), 1)
+    }
+    #[test]
+    fn component_removal() {
+        let mut w = World::default();
+        let e = w.spawn();
+        w.insert(e, Pos(42)).unwrap();
+        assert!(w.contains::<Pos>(e));
+        assert!(w.remove_component::<Pos>(e));
+        assert!(!w.contains::<Pos>(e));
+        assert!(!w.remove_component::<Pos>(e));
     }
 }

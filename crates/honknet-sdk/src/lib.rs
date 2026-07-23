@@ -20,14 +20,9 @@ pub trait GamePlugin: Send {
     fn shutdown(&mut self, _world: &mut World) {}
 }
 
+#[derive(Default)]
 pub struct PluginManager {
     plugins: Vec<Box<dyn GamePlugin>>,
-}
-
-impl Default for PluginManager {
-    fn default() -> Self {
-        Self { plugins: vec![] }
-    }
 }
 
 impl PluginManager {
