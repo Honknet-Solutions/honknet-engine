@@ -8,6 +8,7 @@ license.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+serde = { workspace = true, features = ["derive"] }
 parking_lot.workspace = true
 honknet-core = { path = "../honknet-core" }
 honknet-ecs = { path = "../honknet-ecs" }

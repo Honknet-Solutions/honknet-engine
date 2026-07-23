@@ -34,6 +34,7 @@ members = [
   "crates/honknet-input",
   "crates/honknet-package",
   "crates/honknet-runtime",
+  "crates/honknet-client-runtime",
   "crates/honknet-studio-protocol",
   "crates/honknet-studio-project",
   "crates/honknet-studio-history",

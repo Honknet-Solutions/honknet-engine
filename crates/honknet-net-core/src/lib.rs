@@ -24,6 +24,32 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ClientHelloPayload {
+    pub protocol_version: u16,
+    pub engine_version: String,
+    pub content_hash: String,
+    pub client_id: u64,
+    pub auth_token: Option<String>,
+}
+
+impl NetworkMessage for ClientHelloPayload {
+    const ID: u16 = 100;
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ServerWelcomePayload {
+    pub protocol_version: u16,
+    pub server_tick: u64,
+    pub peer_id: u64,
+    pub tick_rate: u32,
+    pub session_token: String,
+}
+
+impl NetworkMessage for ServerWelcomePayload {
+    const ID: u16 = 101;
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Header {
     pub version: u16,

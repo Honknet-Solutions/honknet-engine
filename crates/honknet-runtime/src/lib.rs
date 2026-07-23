@@ -15,6 +15,7 @@ use honknet_replay::{ReplayHeader, ReplayRecorder};
 use honknet_replication::{Replicator, SpatialProvider};
 use honknet_resources::Vfs;
 use honknet_scheduler::{Scheduler, System};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Clone, Copy)]
@@ -29,11 +30,25 @@ impl Component for VelocityComponent {}
 pub struct PlayerPeer(pub u64);
 impl Component for PlayerPeer {}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EngineRuntimeState {
+    Created,
+    Initializing,
+    LoadingContent,
+    Ready,
+    Running,
+    Paused,
+    ShuttingDown,
+    Stopped,
+    Failed,
+}
+
 pub struct EngineRuntimeConfig {
     pub tick_rate: u32,
     pub listen_address: String,
     pub persistence_path: Option<PathBuf>,
     pub replay_path: Option<PathBuf>,
+    pub auth_secret: String,
 }
 
 impl Default for EngineRuntimeConfig {
@@ -43,11 +58,13 @@ impl Default for EngineRuntimeConfig {
             listen_address: "127.0.0.1:3015".to_string(),
             persistence_path: None,
             replay_path: None,
+            auth_secret: "honknet-secret-change-in-production".to_string(),
         }
     }
 }
 
 pub struct EngineRuntime {
+    pub state: EngineRuntimeState,
     pub world: World,
     pub scheduler: Scheduler,
     pub event_bus: EventBus,
@@ -97,7 +114,7 @@ impl EngineRuntime {
             .as_ref()
             .map(|p| FileBackend::new(p, 3));
 
-        let auth = TokenIssuer::new(b"honknet-secret");
+        let auth = TokenIssuer::new(config.auth_secret.as_bytes());
         let admin = AdminConsole::default();
         let metrics = Metrics::new();
         let health = HealthState::default();
@@ -117,6 +134,7 @@ impl EngineRuntime {
         };
 
         Ok(Self {
+            state: EngineRuntimeState::Running,
             world,
             scheduler,
             event_bus,
@@ -176,8 +194,15 @@ impl EngineRuntime {
     }
 
     pub fn tick(&mut self, delta_seconds: f32) -> Result<()> {
-        // 1. Run ECS Scheduler Systems
-        self.scheduler.run(&mut self.world, delta_seconds).ok();
+        if self.state != EngineRuntimeState::Running {
+            return Ok(());
+        }
+
+        // 1. Run ECS Scheduler Systems with structured error propagation
+        if let Err(e) = self.scheduler.run(&mut self.world, delta_seconds) {
+            tracing::error!("Scheduler error during tick: {e}");
+            return Err(anyhow::anyhow!("Schedule error: {e}"));
+        }
 
         // 2. Physics Simulation Step
         self.physics.step(delta_seconds);

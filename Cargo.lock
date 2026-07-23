@@ -1578,6 +1578,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "honknet-client-runtime"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "honknet-core",
+ "honknet-ecs",
+ "honknet-math",
+ "honknet-net-core",
+ "honknet-net-transport",
+ "honknet-prediction",
+ "honknet-replication",
+ "serde",
+ "thiserror 2.0.19",
+ "tracing",
+]
+
+[[package]]
 name = "honknet-core"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -1862,6 +1879,7 @@ dependencies = [
  "honknet-spatial",
  "honknet-transform",
  "parking_lot",
+ "serde",
  "thiserror 2.0.19",
  "tracing",
 ]

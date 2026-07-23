@@ -11,13 +11,13 @@
   },
   {
     "path": "Cargo.lock",
-    "bytes": 150593,
-    "sha256": "1928d67a462529c0ea9f916eaf9ea51d82dba4d77eaaf5917d8fee5139529516"
+    "bytes": 150888,
+    "sha256": "f2d132784af5e445b9c07787ddf2eed20b2d9315206b10a3f3d9e139c6927205"
   },
   {
     "path": "Cargo.toml",
-    "bytes": 2791,
-    "sha256": "6815b9f23bc6736ea0eb68e3500ac2e042d1ff0b98cdeb51aed3196d79c17344"
+    "bytes": 2826,
+    "sha256": "c766451e8d1c6addeba998ef8c7646b93ca185426d037b3558b9e6d8ba727b9d"
   },
   {
     "path": "Dockerfile",
@@ -96,8 +96,8 @@
   },
   {
     "path": "apps/honknet-server/src/main.rs",
-    "bytes": 4877,
-    "sha256": "3498cfe580a33dc14ea09146b869ee3833f00f81e920f9333144172c67f1342c"
+    "bytes": 5012,
+    "sha256": "fbb2df26eca3aa71a4ea7bf35e24b35dd3e9d4b061569ad067eaa886579371a8"
   },
   {
     "path": "apps/honknet-studio/dist/assets/index-CGSKbPCc.css",
@@ -270,6 +270,16 @@
     "sha256": "b3203526ce8679f904c000213e7ca5f9e2eeecdb9799865f9708861a11733ed9"
   },
   {
+    "path": "crates/honknet-client-runtime/Cargo.toml",
+    "bytes": 619,
+    "sha256": "f328bb53fcb81c80f06285e8a2b6193c077dfbc7c921f7948b6d342c91c94724"
+  },
+  {
+    "path": "crates/honknet-client-runtime/src/lib.rs",
+    "bytes": 3965,
+    "sha256": "7e1436a835ce0d5cd8b8751683d0c532c9be276252b284b87d8e34fafa4a9155"
+  },
+  {
     "path": "crates/honknet-core/Cargo.toml",
     "bytes": 203,
     "sha256": "80cb75733a5fcb961dc56db38d57f87d9dbc326e91f16fda2e09148ad8250083"
@@ -356,8 +366,8 @@
   },
   {
     "path": "crates/honknet-net-core/src/lib.rs",
-    "bytes": 7538,
-    "sha256": "16f80bea2529b91290c6c913ed14f5f4650f6baa18fb5b0e486842d6729e92af"
+    "bytes": 8169,
+    "sha256": "af1c78bf006b70fb4f94d2fcdec05988f89792e4725eba7ad93f321d5cc8e605"
   },
   {
     "path": "crates/honknet-net-transport/Cargo.toml",
@@ -486,13 +496,13 @@
   },
   {
     "path": "crates/honknet-runtime/Cargo.toml",
-    "bytes": 1255,
-    "sha256": "682b5ace2fea9950f7d98cb5852c473270adabe03ad459a82459a0531d735a89"
+    "bytes": 1307,
+    "sha256": "6e965e1f6937708635eddff613cf153871d0caff059c5dd56ff4398eb98893d3"
   },
   {
     "path": "crates/honknet-runtime/src/lib.rs",
-    "bytes": 11080,
-    "sha256": "2dbb17e51c9ebdf229d45767a39e0be65d6042f58cfcfbeaabf42c35f6f7dc52"
+    "bytes": 11827,
+    "sha256": "4a4a6c3c6679e848c9fcb057c2cbf492066068da737278d5f3d5c9b0c8c23641"
   },
   {
     "path": "crates/honknet-scheduler/Cargo.toml",

@@ -71,6 +71,8 @@ async fn main() -> Result<()> {
         listen_address: args.listen.to_string(),
         persistence_path: None,
         replay_path: None,
+        auth_secret: std::env::var("HONKNET_AUTH_SECRET")
+            .unwrap_or_else(|_| "honknet-prod-secret-key-1337".to_string()),
     })?;
 
     let dt = 1. / args.tick_rate.max(1) as f64;
