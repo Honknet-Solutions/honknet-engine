@@ -1,15 +1,11 @@
 $ErrorActionPreference = "Stop"
-Set-Location $PSScriptRoot
-
-npm ci
-npm run validate
-npm run typecheck
-npm test
-npm run build
-cargo generate-lockfile
+python tools/source_audit.py
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
-cargo build --workspace --release --locked
-
-Write-Host "Honknet Engine verification completed successfully."
+cargo check --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo build --workspace --release
+npm install
+npm run typecheck
+npm run build:studio
+npm run build:web

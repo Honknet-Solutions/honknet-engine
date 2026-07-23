@@ -1,18 +1,9 @@
-# Public release gates
+# Honknet 1.0 release gates
 
-Релиз движка разрешён только после выполнения всех пунктов:
-
-1. `npm ci`, validation, typecheck, tests и production builds.
-2. `cargo fmt`, Clippy с `-D warnings`, Rust tests и release build.
-3. Linux, Windows и macOS CI.
-4. Чистая Docker build и healthcheck.
-5. Runtime integration test: server + минимум два клиента.
-6. 200-client connection/load test.
-7. 6-hour soak test с целевой сущностной нагрузкой.
-8. malformed packets, message flood, reconnect storm и duplicate identity tests.
-9. persistence crash recovery и backup restore.
-10. SBOM, checksums, signed release artifacts и reproducible dependency lockfiles.
-11. Security review всех protocol handlers и script commands.
-12. Published benchmark report с hardware specification и p95/p99 metrics.
-
-Ни один source archive без этих результатов не маркируется как production-certified.
+- clean Linux, Windows and macOS builds;
+- no Clippy warnings and no undocumented unsafe;
+- desktop and web clients connect to one authoritative server;
+- malformed packet, reconnect, persistence recovery and replay determinism tests;
+- 256 clients, 100,000 entities, 30 TPS, six-hour soak;
+- p95 below 20 ms and p99 below 30 ms on the declared reference host;
+- signed archives, SBOM and reproducible checksums.

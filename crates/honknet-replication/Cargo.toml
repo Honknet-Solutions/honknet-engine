@@ -1,0 +1,13 @@
+[package]
+name="honknet-replication"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-core = { path = "../honknet-core" }
+honknet-math = { path = "../honknet-math" }
+honknet-serialization = { path = "../honknet-serialization" }
+serde.workspace = true
+rayon.workspace = true
+

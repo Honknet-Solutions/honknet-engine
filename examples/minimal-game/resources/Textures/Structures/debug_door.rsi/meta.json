@@ -1,8 +1,0 @@
-{
-  "version": 1,
-  "size": {"x": 32, "y": 32},
-  "states": [
-    {"name": "closed", "directions": 1},
-    {"name": "open", "directions": 1}
-  ]
-}

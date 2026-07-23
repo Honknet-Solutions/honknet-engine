@@ -1,0 +1,16 @@
+[package]
+name="honknet-net-core"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-serialization = { path = "../honknet-serialization" }
+serde.workspace = true
+bincode.workspace = true
+bytes.workspace = true
+bitflags.workspace = true
+crc32fast.workspace = true
+zstd.workspace = true
+thiserror.workspace = true
+

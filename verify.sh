@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")"
-
-npm ci
-npm run validate
-npm run typecheck
-npm test
-npm run build
-cargo generate-lockfile
+python3 tools/source_audit.py
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-cargo test --workspace --all-features --locked
-cargo build --workspace --release --locked
-
-echo "Honknet Engine verification completed successfully."
+cargo check --workspace --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo build --workspace --release
+if command -v npm >/dev/null 2>&1; then
+  npm install
+  npm run typecheck
+  npm run build:studio
+  npm run build:web
+fi

@@ -1,0 +1,12 @@
+[package]
+name = "honknet-serialization"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+bincode.workspace = true
+crc32fast.workspace = true
+thiserror.workspace = true
+

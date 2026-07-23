@@ -1,0 +1,13 @@
+[package]
+name="honknet-physics"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-core = { path = "../honknet-core" }
+honknet-math = { path = "../honknet-math" }
+honknet-spatial = { path = "../honknet-spatial" }
+serde.workspace = true
+smallvec.workspace = true
+

@@ -1,0 +1,17 @@
+[package]
+name="honknet-net-transport"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+
+[dependencies]
+honknet-net-core = { path = "../honknet-net-core" }
+async-trait.workspace = true
+tokio.workspace = true
+quinn.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+bytes.workspace = true
+thiserror.workspace = true
+parking_lot.workspace = true
+

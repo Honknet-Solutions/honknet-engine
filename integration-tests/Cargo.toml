@@ -1,0 +1,15 @@
+[package]
+name="honknet-integration-tests"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
+[dependencies]
+honknet-testing={path="../crates/honknet-testing"}
+honknet-core={path="../crates/honknet-core"}
+honknet-ecs={path="../crates/honknet-ecs"}
+honknet-math={path="../crates/honknet-math"}
+honknet-map={path="../crates/honknet-map"}
+honknet-physics={path="../crates/honknet-physics"}
+honknet-persistence={path="../crates/honknet-persistence"}
+honknet-replay={path="../crates/honknet-replay"}
+tokio.workspace=true

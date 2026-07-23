@@ -1,10 +1,16 @@
 [package]
-name = "honknet-persistence"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
+name="honknet-persistence"
+version.workspace=true
+edition.workspace=true
+license.workspace=true
 
 [dependencies]
+honknet-serialization = { path = "../honknet-serialization" }
 serde.workspace = true
 serde_json.workspace = true
+rusqlite.workspace = true
+sha2.workspace = true
+hex.workspace = true
+parking_lot.workspace = true
 thiserror.workspace = true
+

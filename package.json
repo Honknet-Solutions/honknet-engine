@@ -1,43 +1,17 @@
 {
   "name": "honknet-engine",
   "private": true,
-  "version": "0.2.0-rc.1",
+  "version": "1.0.0-rc.1",
   "workspaces": [
-    "apps/client",
-    "apps/script-host",
-    "packages/*",
-    "tools/studio",
-    "examples/minimal-game/client",
-    "examples/minimal-game/server",
-    "examples/minimal-game/shared"
+    "apps/honknet-studio",
+    "apps/honknet-web-shell"
   ],
   "scripts": {
-    "copy:resources": "node tools/copy-resources.mjs",
-    "dev:client": "npm --workspace apps/client run dev",
-    "dev:studio": "npm --workspace tools/studio run dev",
-    "dev:scripts": "npm --workspace apps/script-host run dev",
-    "build:client": "npm --workspace apps/client run build",
-    "build:studio": "npm --workspace tools/studio run build",
-    "build:scripts": "npm --workspace apps/script-host run build",
-    "build": "npm run generate && npm run build:sdk && npm run build:cli && npm run build:game && npm run build:scripts && npm run build:client && npm run build:studio",
-    "typecheck": "npm run generate:components && npm --workspaces --if-present run typecheck",
-    "test": "npm --workspace @honknet/hui-runtime run build && npm --workspace @honknet/server run test && npm --workspace apps/client run test && npm --workspace tools/studio run test",
-    "build:sdk": "npm --workspace @honknet/shared run build && npm --workspace @honknet/server run build && npm --workspace @honknet/client run build && npm --workspace @honknet/hui-runtime run build",
-    "build:game": "npm --workspace @example-game/shared run build && npm --workspace @example-game/server run build && npm --workspace @example-game/client run build",
-    "generate:components": "node tools/generate-component-types.mjs",
-    "generate": "npm run copy:resources && npm run generate:components",
-    "validate": "node tools/validate-content.mjs",
-    "verify:web": "npm run validate && npm run typecheck && npm run build",
-    "auth:issue": "node tools/issue-auth-token.mjs",
-    "load:test": "node tools/load-test.mjs",
-    "build:cli": "npm --workspace @honknet/cli run build",
-    "doctor": "node packages/cli/dist/index.js doctor",
-    "package:engine": "node tools/package-engine.mjs",
-    "bench:content": "node tools/content-scale-benchmark.mjs",
-    "soak:test": "bash tools/soak-test.sh"
-  },
-  "devDependencies": {
-    "yaml": "^2.7.0"
+    "studio": "npm --workspace apps/honknet-studio run dev",
+    "build:studio": "npm --workspace apps/honknet-studio run build",
+    "build:web": "npm --workspace apps/honknet-web-shell run build",
+    "typecheck": "npm --workspaces run typecheck",
+    "test:source": "python3 tools/source_audit.py"
   },
   "engines": {
     "node": ">=22"
