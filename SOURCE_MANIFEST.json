@@ -46,8 +46,8 @@
   },
   {
     "path": "RELEASE_NOTES.md",
-    "bytes": 848,
-    "sha256": "5bc75d5dd7edb4e0eaca0bc8a9ad4fc797e1041a6c3824f0325d0e9b050aa162"
+    "bytes": 585,
+    "sha256": "3f987ad8b8c53bf083b4b479c53bf5484148ef2b18b04b42655d75c8f4a7b59b"
   },
   {
     "path": "VERIFICATION.md",
@@ -100,19 +100,19 @@
     "sha256": "5c2ad332dba6e5e4d52067c3123eb33586fcd3060bb56c20c410317266d84273"
   },
   {
-    "path": "apps/honknet-studio/dist/assets/index-9G_g2ecb.css",
-    "bytes": 1067,
-    "sha256": "b8115c7fc3add35a0d0a505311f09efc68f213f6ebea10b60cd242456f7ef602"
+    "path": "apps/honknet-studio/dist/assets/index-CGSKbPCc.css",
+    "bytes": 5933,
+    "sha256": "8d3f2d2247b609c02a26513bca123cb49dde7c3cf57557fda4ad38c7a30a8181"
   },
   {
-    "path": "apps/honknet-studio/dist/assets/index-DVT8cIwV.js",
-    "bytes": 114261,
-    "sha256": "1ade7f260fe62469dc18b6577301906cc3def284dfeb77784cd45bb7a0ab8c7b"
+    "path": "apps/honknet-studio/dist/assets/index-DO-OTkos.js",
+    "bytes": 39585,
+    "sha256": "1ca21b2a0264e7221123a321e9daebe3969000544904ded6de45c8ebb6381101"
   },
   {
     "path": "apps/honknet-studio/dist/index.html",
     "bytes": 166,
-    "sha256": "5bb11569a33222da2ba600f0bfcd40f85579584d0cbf6e0770df6648ff00e354"
+    "sha256": "21b0ff6170ab4b256c29e660361f0ef5ba8ddbe703055fafd318f2943ef84aaa"
   },
   {
     "path": "apps/honknet-studio/index.html",
@@ -126,13 +126,53 @@
   },
   {
     "path": "apps/honknet-studio/src/main.ts",
-    "bytes": 11824,
-    "sha256": "feabcc3cedd1ce04dca83115991d04a0dfef14ddd021ada6a7db7ac8b259d75b"
+    "bytes": 6002,
+    "sha256": "ca02881531679daa8b845236361d5013f86ed24fc0fefebc25a5c11e914f93eb"
   },
   {
     "path": "apps/honknet-studio/src/style.css",
-    "bytes": 1462,
-    "sha256": "546432c13d1c99ba12acfb933bf4eceb7da3af570c9a1042e72b2d88b03bf1b2"
+    "bytes": 8221,
+    "sha256": "6d07e9f6084f5021758fed5e1d23b691954a4a35aa82eb8fae3a177b298a9681"
+  },
+  {
+    "path": "apps/honknet-studio/src/tools/map-editor.ts",
+    "bytes": 10555,
+    "sha256": "db1e04cdfc1fbb5362fe6db4b288cbd3938fcf670fa0d73f44d6d6c5078fd1d9"
+  },
+  {
+    "path": "apps/honknet-studio/src/tools/migration-assistant.ts",
+    "bytes": 2596,
+    "sha256": "67b4ebfb933321e9e183a72703c2de82ab65b5be27803b0b7fa84041e7748927"
+  },
+  {
+    "path": "apps/honknet-studio/src/tools/network-inspector.ts",
+    "bytes": 3351,
+    "sha256": "b946ba0fe3ff13aabaa5f1aa959b342a7793c78f2732bb26c55149217db13dca"
+  },
+  {
+    "path": "apps/honknet-studio/src/tools/profiler.ts",
+    "bytes": 3586,
+    "sha256": "4762dc623abe410f5097e3f7348b12b8f224f778aa5c44c65f88fc31afc536ea"
+  },
+  {
+    "path": "apps/honknet-studio/src/tools/project-manager.ts",
+    "bytes": 6749,
+    "sha256": "482a4dda468bd2a42c3015c95b3808a738e793b3614ee37d43b9efad61930551"
+  },
+  {
+    "path": "apps/honknet-studio/src/tools/prototype-editor.ts",
+    "bytes": 8116,
+    "sha256": "796d05d84b215293cc7206d87ad5235ae5073571ea660f5bc1adc6ea3c4b0e57"
+  },
+  {
+    "path": "apps/honknet-studio/src/tools/ui-editor.ts",
+    "bytes": 7455,
+    "sha256": "fd9dda31c9efa2e6be8bdacd861f6e5aebdfa118d2fe8d6f50413cfdfa4a700f"
+  },
+  {
+    "path": "apps/honknet-studio/src/types.ts",
+    "bytes": 2874,
+    "sha256": "b3b8edf29a135139318df5bf5b816a03bd3d46dc4e62892f9210527a7efc9083"
   },
   {
     "path": "apps/honknet-studio/src/yaml.d.ts",
@@ -715,9 +755,44 @@
     "sha256": "eed4c030e021730b85543b80e88987b8b553092c20572900353381e9e4065045"
   },
   {
+    "path": "tools/map-editor/README.md",
+    "bytes": 199,
+    "sha256": "f2397e0d249aefd422dfaa7540a9a6f360eeb7fef2d902e16b3bacba264301e8"
+  },
+  {
+    "path": "tools/migration-assistant/README.md",
+    "bytes": 237,
+    "sha256": "552f7047aeb67a7fb1b24f99dd4f0c8d7a27def6443d31e39c4f63035fcc2bdc"
+  },
+  {
+    "path": "tools/network-inspector/README.md",
+    "bytes": 253,
+    "sha256": "34986d0e31cb57f8614bed2cb1d3b087b11540498773ae388c001256f04426d6"
+  },
+  {
+    "path": "tools/profiler/README.md",
+    "bytes": 218,
+    "sha256": "e5df35ea5a837cd7b625646d07210644b246fa79b0bf3ef9f9559fe9c2477033"
+  },
+  {
+    "path": "tools/prototype-editor/README.md",
+    "bytes": 247,
+    "sha256": "eb891d8f585ec0616122594314dc0c8c40e0576522bcc5f99b2141f37165ae56"
+  },
+  {
     "path": "tools/source_audit.py",
     "bytes": 2503,
     "sha256": "4c62fa5d887713084cb71163f62b886d9f6d959b15ab106ee7f334783b1ce9db"
+  },
+  {
+    "path": "tools/studio/README.md",
+    "bytes": 1893,
+    "sha256": "3bf48fbb7690c1c61912736d069123896f6a1a4af12699e32f8e9fcdbd29e527"
+  },
+  {
+    "path": "tools/ui-editor/README.md",
+    "bytes": 239,
+    "sha256": "5580fcf831ad66d914c7c27c42caec91f95d13d5962e9d06b7fb01e1ab33db90"
   },
   {
     "path": "verify.ps1",
