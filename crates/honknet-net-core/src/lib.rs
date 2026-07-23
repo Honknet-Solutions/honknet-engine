@@ -24,6 +24,68 @@ bitflags! {
     }
 }
 
+pub const ENVELOPE_HEADER_SIZE: usize = 17;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NetworkPacketEnvelope {
+    pub protocol_version: u16,
+    pub message_id: u16,
+    pub flags: u8,
+    pub tick: u64,
+    pub payload_len: u32,
+}
+
+impl NetworkPacketEnvelope {
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        out.extend(self.protocol_version.to_le_bytes());
+        out.extend(self.message_id.to_le_bytes());
+        out.push(self.flags);
+        out.extend(self.tick.to_le_bytes());
+        out.extend(self.payload_len.to_le_bytes());
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<(Self, &[u8]), ProtocolError> {
+        if bytes.len() < ENVELOPE_HEADER_SIZE {
+            return Err(ProtocolError::Truncated);
+        }
+        let protocol_version = u16::from_le_bytes(bytes[0..2].try_into().unwrap());
+        let message_id = u16::from_le_bytes(bytes[2..4].try_into().unwrap());
+        let flags = bytes[4];
+        let tick = u64::from_le_bytes(bytes[5..13].try_into().unwrap());
+        let payload_len = u32::from_le_bytes(bytes[13..17].try_into().unwrap()) as usize;
+
+        if bytes.len() < ENVELOPE_HEADER_SIZE + payload_len {
+            return Err(ProtocolError::Truncated);
+        }
+        let payload = &bytes[ENVELOPE_HEADER_SIZE..ENVELOPE_HEADER_SIZE + payload_len];
+
+        Ok((
+            Self {
+                protocol_version,
+                message_id,
+                flags,
+                tick,
+                payload_len: payload_len as u32,
+            },
+            payload,
+        ))
+    }
+}
+
+pub fn wrap_envelope(message_id: u16, flags: u8, tick: u64, payload: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(ENVELOPE_HEADER_SIZE + payload.len());
+    let env = NetworkPacketEnvelope {
+        protocol_version: PROTOCOL_VERSION,
+        message_id,
+        flags,
+        tick,
+        payload_len: payload.len() as u32,
+    };
+    env.encode(&mut out);
+    out.extend(payload);
+    out
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ClientHelloPayload {
     pub protocol_version: u16,
@@ -201,6 +263,16 @@ pub fn encode_message<T: NetworkMessage>(
     Ok((T::ID, raw, false))
 }
 
+pub fn encode_message_envelope<T: NetworkMessage>(
+    m: &T,
+    tick: u64,
+    compress: bool,
+) -> Result<Vec<u8>, ProtocolError> {
+    let (id, payload, compressed) = encode_message(m, compress)?;
+    let flags = if compressed { 4 } else { 0 };
+    Ok(wrap_envelope(id, flags, tick, &payload))
+}
+
 pub fn decode_message<T: NetworkMessage>(
     bytes: &[u8],
     compressed: bool,
@@ -220,6 +292,23 @@ pub fn decode_message<T: NetworkMessage>(
     let (v, _) = bincode::serde::decode_from_slice(&raw, bincode::config::standard())
         .map_err(|e| ProtocolError::Codec(e.to_string()))?;
     Ok(v)
+}
+
+pub fn decode_message_envelope<T: NetworkMessage>(
+    bytes: &[u8],
+    limit: usize,
+) -> Result<(NetworkPacketEnvelope, T), ProtocolError> {
+    let (env, payload) = NetworkPacketEnvelope::decode(bytes)?;
+    if env.message_id != T::ID {
+        return Err(ProtocolError::Codec(format!(
+            "Message ID mismatch: expected {}, got {}",
+            T::ID,
+            env.message_id
+        )));
+    }
+    let compressed = (env.flags & 4) != 0;
+    let msg = decode_message::<T>(payload, compressed, limit)?;
+    Ok((env, msg))
 }
 
 pub fn acked(sequence: u32, ack: u32, bits: u32) -> bool {

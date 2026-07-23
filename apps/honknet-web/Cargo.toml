@@ -18,4 +18,5 @@ honknet-client-runtime = { path = "../../crates/honknet-client-runtime" }
 honknet-net-core = { path = "../../crates/honknet-net-core" }
 honknet-replication = { path = "../../crates/honknet-replication" }
 honknet-math = { path = "../../crates/honknet-math" }
+getrandom = { version = "0.3", features = ["wasm_js"] }
 

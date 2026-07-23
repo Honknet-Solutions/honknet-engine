@@ -127,6 +127,8 @@ async function bootstrap() {
     });
 
     let inputSeq = 1;
+    let lastSentMoveX = 0;
+    let lastSentMoveY = 0;
 
     const loop = new RenderLoop();
     loop.addCallback((delta: number) => {
@@ -143,6 +145,12 @@ async function bootstrap() {
             const len = Math.hypot(moveX, moveY);
             moveX /= len;
             moveY /= len;
+        }
+
+        // Transmit input when moving or when stopping (WASD key release)
+        if (moveX !== lastSentMoveX || moveY !== lastSentMoveY || moveX !== 0 || moveY !== 0) {
+            lastSentMoveX = moveX;
+            lastSentMoveY = moveY;
 
             const seq = inputSeq++;
             wasmBridge.pushInput(seq, moveX, moveY);

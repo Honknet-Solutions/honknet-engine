@@ -1,6 +1,9 @@
 use honknet_client_runtime::{ClientConnectionState, ClientRuntime};
 use honknet_math::Vec2;
-use honknet_net_core::{decode_message, ServerWelcomePayload};
+use honknet_net_core::{
+    decode_message, encode_message_envelope, NetworkMessage, NetworkPacketEnvelope,
+    ServerWelcomePayload,
+};
 use honknet_replication::{Delta, Snapshot};
 use wasm_bindgen::prelude::*;
 
@@ -42,23 +45,29 @@ impl WasmClientRuntime {
     }
 
     pub fn push_network_message(&mut self, data: &[u8]) -> Result<(), JsValue> {
-        if let Ok(snapshot) = decode_message::<Snapshot>(data, false, 1024 * 1024) {
-            self.runtime.apply_snapshot(&snapshot);
-            self.runtime.set_state(ClientConnectionState::Active);
-            return Ok(());
+        if let Ok((env, payload)) = NetworkPacketEnvelope::decode(data) {
+            let compressed = (env.flags & 4) != 0;
+            match env.message_id {
+                Snapshot::ID => {
+                    if let Ok(snapshot) = decode_message::<Snapshot>(payload, compressed, 1024 * 1024) {
+                        self.runtime.apply_snapshot(&snapshot);
+                        self.runtime.set_state(ClientConnectionState::Active);
+                    }
+                }
+                Delta::ID => {
+                    if let Ok(delta) = decode_message::<Delta>(payload, compressed, 1024 * 1024) {
+                        self.runtime.apply_delta(&delta);
+                        self.runtime.set_state(ClientConnectionState::Active);
+                    }
+                }
+                ServerWelcomePayload::ID => {
+                    if let Ok(_welcome) = decode_message::<ServerWelcomePayload>(payload, compressed, 1024) {
+                        self.runtime.set_state(ClientConnectionState::Active);
+                    }
+                }
+                _ => {}
+            }
         }
-
-        if let Ok(delta) = decode_message::<Delta>(data, false, 1024 * 1024) {
-            self.runtime.apply_delta(&delta);
-            self.runtime.set_state(ClientConnectionState::Active);
-            return Ok(());
-        }
-
-        if let Ok(_welcome) = decode_message::<ServerWelcomePayload>(data, false, 1024) {
-            self.runtime.set_state(ClientConnectionState::Active);
-            return Ok(());
-        }
-
         Ok(())
     }
 
@@ -100,11 +109,7 @@ impl WasmClientRuntime {
             sequence,
             movement: Vec2::new(x, y),
         };
-        if let Ok((_, payload, _)) = honknet_net_core::encode_message(&input, false) {
-            payload
-        } else {
-            vec![]
-        }
+        encode_message_envelope(&input, self.runtime.client_tick, false).unwrap_or_default()
     }
 
     pub fn create_hello_payload(&self) -> Vec<u8> {
@@ -117,11 +122,7 @@ impl WasmClientRuntime {
             auth_token: Some("auth-ok".to_string()),
             reconnect_token: None,
         };
-        if let Ok((_, payload, _)) = honknet_net_core::encode_message(&hello, false) {
-            payload
-        } else {
-            vec![]
-        }
+        encode_message_envelope(&hello, self.runtime.client_tick, false).unwrap_or_default()
     }
 
     pub fn get_client_state(&self) -> u32 {

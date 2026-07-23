@@ -1647,7 +1647,6 @@ dependencies = [
  "honknet-ecs",
  "honknet-math",
  "honknet-net-core",
- "honknet-net-transport",
  "honknet-prediction",
  "honknet-replication",
  "serde",
@@ -2154,6 +2153,7 @@ name = "honknet-web"
 version = "1.0.0-rc.1"
 dependencies = [
  "console_error_panic_hook",
+ "getrandom 0.3.4",
  "honknet-client-runtime",
  "honknet-math",
  "honknet-net-core",

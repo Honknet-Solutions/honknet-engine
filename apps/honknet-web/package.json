@@ -4,8 +4,9 @@
   "version": "1.0.0-rc.1",
   "type": "module",
   "scripts": {
+    "build:wasm": "cargo build --target wasm32-unknown-unknown --release -p honknet-web && wasm-bindgen ../../target/wasm32-unknown-unknown/release/honknet_web.wasm --out-dir pkg --target web",
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc && vite build",
+    "build": "npm run build:wasm && tsc && vite build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
