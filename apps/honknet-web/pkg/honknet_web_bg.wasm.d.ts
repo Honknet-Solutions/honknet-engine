@@ -1,0 +1,31 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_wasmclientruntime_free: (a: number, b: number) => void;
+export const wasmclientruntime_new: () => number;
+export const wasmclientruntime_initialize_client: (a: number, b: number) => void;
+export const wasmclientruntime_connect_client: (a: number, b: number, c: number, d: number) => void;
+export const wasmclientruntime_disconnect_client: (a: number) => void;
+export const wasmclientruntime_push_network_message: (a: number, b: number, c: number, d: number) => void;
+export const wasmclientruntime_push_input: (a: number, b: number, c: number, d: number) => void;
+export const wasmclientruntime_tick_client: (a: number, b: number, c: number) => void;
+export const wasmclientruntime_apply_snapshot: (a: number, b: number, c: number, d: number) => void;
+export const wasmclientruntime_apply_delta: (a: number, b: number, c: number, d: number) => void;
+export const wasmclientruntime_extract_render_frame: (a: number) => number;
+export const wasmclientruntime_ack_render_frame: (a: number, b: bigint) => void;
+export const wasmclientruntime_create_input_payload: (a: number, b: number, c: number, d: number, e: number) => void;
+export const wasmclientruntime_create_hello_payload: (a: number, b: number) => void;
+export const wasmclientruntime_get_client_state: (a: number) => number;
+export const wasmclientruntime_get_diagnostics: (a: number, b: number) => void;
+export const rust_zstd_wasm_shim_qsort: (a: number, b: number, c: number, d: number) => void;
+export const rust_zstd_wasm_shim_malloc: (a: number) => number;
+export const rust_zstd_wasm_shim_memcmp: (a: number, b: number, c: number) => number;
+export const rust_zstd_wasm_shim_calloc: (a: number, b: number) => number;
+export const rust_zstd_wasm_shim_free: (a: number) => void;
+export const rust_zstd_wasm_shim_memcpy: (a: number, b: number, c: number) => number;
+export const rust_zstd_wasm_shim_memmove: (a: number, b: number, c: number) => number;
+export const rust_zstd_wasm_shim_memset: (a: number, b: number, c: number) => number;
+export const __wbindgen_export: (a: number, b: number, c: number) => void;
+export const __wbindgen_export2: (a: number, b: number) => number;
+export const __wbindgen_export3: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_add_to_stack_pointer: (a: number) => number;

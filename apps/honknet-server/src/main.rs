@@ -4,7 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use honknet_math::Vec2;
 use honknet_net_core::{
     decode_message, encode_message_envelope, ClientHelloPayload, ClientInputPayload,
-    NetworkPacketEnvelope, ServerWelcomePayload, PROTOCOL_VERSION,
+    NetworkMessage, NetworkPacketEnvelope, ServerWelcomePayload, PROTOCOL_VERSION,
 };
 use honknet_net_server::WsServer;
 use honknet_replication::{EntityState, Snapshot};
@@ -252,7 +252,8 @@ async fn main() -> Result<()> {
                 };
 
                 if let Ok(env_payload) = encode_message_envelope(&snapshot, r.world.tick(), false) {
-                    for &peer in ws_srv.clients.keys() {
+                    let peers: Vec<u64> = ws_srv.clients.keys().copied().collect();
+                    for peer in peers {
                         ws_srv.send_to(peer, env_payload.clone());
                     }
                 }
