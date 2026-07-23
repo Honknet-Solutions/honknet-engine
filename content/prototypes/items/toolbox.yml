@@ -1,0 +1,10 @@
+type: entity
+id: ItemToolbox
+name: Mechanical Toolbox
+description: Heavy red steel toolbox containing essential tools.
+abstract: false
+data:
+  weight: 5.0
+  sprite:
+    sprite: Objects/Tools/toolbox.rsi
+    state: red

@@ -8,6 +8,7 @@ export class WasmClientRuntime {
     apply_delta(data: Uint8Array): void;
     apply_snapshot(data: Uint8Array): void;
     connect_client(_url: string): void;
+    create_ack_payload(acked_tick: bigint): Uint8Array;
     create_hello_payload(): Uint8Array;
     create_input_payload(sequence: number, x: number, y: number): Uint8Array;
     disconnect_client(): void;
@@ -39,6 +40,7 @@ export interface InitOutput {
     readonly wasmclientruntime_ack_render_frame: (a: number, b: bigint) => void;
     readonly wasmclientruntime_create_input_payload: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly wasmclientruntime_create_hello_payload: (a: number, b: number) => void;
+    readonly wasmclientruntime_create_ack_payload: (a: number, b: number, c: bigint) => void;
     readonly wasmclientruntime_get_client_state: (a: number) => number;
     readonly wasmclientruntime_get_diagnostics: (a: number, b: number) => void;
     readonly rust_zstd_wasm_shim_qsort: (a: number, b: number, c: number, d: number) => void;

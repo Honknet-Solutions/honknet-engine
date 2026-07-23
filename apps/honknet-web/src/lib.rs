@@ -10,6 +10,8 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct WasmClientRuntime {
     runtime: ClientRuntime,
+    session_peer_id: u64,
+    reconnect_token: Option<String>,
 }
 
 impl Default for WasmClientRuntime {
@@ -25,6 +27,8 @@ impl WasmClientRuntime {
         console_error_panic_hook::set_once();
         Self {
             runtime: ClientRuntime::new(),
+            session_peer_id: 0,
+            reconnect_token: None,
         }
     }
 
@@ -61,7 +65,9 @@ impl WasmClientRuntime {
                     }
                 }
                 ServerWelcomePayload::ID => {
-                    if let Ok(_welcome) = decode_message::<ServerWelcomePayload>(payload, compressed, 1024) {
+                    if let Ok(welcome) = decode_message::<ServerWelcomePayload>(payload, compressed, 1024) {
+                        self.session_peer_id = welcome.peer_id;
+                        self.reconnect_token = welcome.reconnect_token;
                         self.runtime.set_state(ClientConnectionState::Active);
                     }
                 }
@@ -120,9 +126,14 @@ impl WasmClientRuntime {
             content_manifest_hash: "ss15-manifest".to_string(),
             supported_compression: vec![],
             auth_token: Some("auth-ok".to_string()),
-            reconnect_token: None,
+            reconnect_token: self.reconnect_token.clone(),
         };
         encode_message_envelope(&hello, self.runtime.client_tick, false).unwrap_or_default()
+    }
+
+    pub fn create_ack_payload(&self, acked_tick: u64) -> Vec<u8> {
+        let ack = honknet_net_core::StateAckPayload { acked_tick };
+        encode_message_envelope(&ack, self.runtime.client_tick, false).unwrap_or_default()
     }
 
     pub fn get_client_state(&self) -> u32 {

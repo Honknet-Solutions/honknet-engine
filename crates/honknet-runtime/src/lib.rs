@@ -182,21 +182,30 @@ impl EngineRuntime {
         self.state = EngineRuntimeState::Initializing;
     }
     pub fn load_content(&mut self) {
+        self.load_content_project(&PathBuf::from("content"));
+    }
+
+    pub fn load_content_project(&mut self, path: &PathBuf) {
         self.state = EngineRuntimeState::LoadingContent;
-        
-        // Mount project prototypes if content directory exists
-        let prototype_path = PathBuf::from("content/prototypes");
-        if prototype_path.exists() {
-            if let Ok(entries) = std::fs::read_dir(prototype_path) {
+
+        fn walk_and_load(dir: &PathBuf, manager: &honknet_prototypes::PrototypeManager) {
+            if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
-                    if entry.path().extension().is_some_and(|e| e == "yml" || e == "yaml") {
-                        if let Ok(text) = std::fs::read_to_string(entry.path()) {
-                            let _ = self.prototypes.load_yaml(&text);
+                    let p = entry.path();
+                    if p.is_dir() {
+                        walk_and_load(&p, manager);
+                    } else if p.extension().is_some_and(|e| e == "yml" || e == "yaml") {
+                        if let Ok(text) = std::fs::read_to_string(&p) {
+                            if let Err(e) = manager.load_yaml(&text) {
+                                tracing::warn!("Failed loading prototype {:?}: {e}", p);
+                            }
                         }
                     }
                 }
             }
         }
+
+        walk_and_load(path, &self.prototypes);
 
         // Initialize station map grid (Grid entity)
         let grid_entity = self.world.spawn();
@@ -303,22 +312,79 @@ impl EngineRuntime {
             }
         }
 
-        // 4. Update Replicator states for spatial PVS
+        // 4. Update Replicator states for spatial PVS with components (Single Source of Truth)
         for (&peer, &e) in &self.players {
-            if let Some(pos) = self.world.get::<PositionComponent>(e) {
-                self.replication.states.insert(
-                    e,
-                    honknet_replication::EntityState {
-                        entity: e,
-                        revision: self.world.tick(),
-                        position: pos.0,
-                        owner: Some(peer),
-                        importance: 100.0,
-                        frequency: 1,
-                        components: vec![],
-                    },
-                );
-            }
+            let pos = self
+                .world
+                .get::<PositionComponent>(e)
+                .map(|p| p.0)
+                .unwrap_or(Vec2::ZERO);
+            let vel = self
+                .world
+                .get::<VelocityComponent>(e)
+                .map(|v| v.0)
+                .unwrap_or(Vec2::ZERO);
+
+            let transform_comp = honknet_replication::ComponentState::encode(
+                honknet_replication::NET_ID_TRANSFORM,
+                self.world.tick(),
+                honknet_replication::ReplicationMode::Replicated,
+                &honknet_replication::NetTransformComponent {
+                    position: pos,
+                    rotation: 0.0,
+                    parent_entity: None,
+                },
+            );
+
+            let physics_comp = honknet_replication::ComponentState::encode(
+                honknet_replication::NET_ID_PHYSICS,
+                self.world.tick(),
+                honknet_replication::ReplicationMode::Replicated,
+                &honknet_replication::NetPhysicsComponent {
+                    velocity: vel,
+                    angular_velocity: 0.0,
+                    mass: 70.0,
+                    body_type: 1,
+                },
+            );
+
+            let meta_comp = honknet_replication::ComponentState::encode(
+                honknet_replication::NET_ID_METADATA,
+                self.world.tick(),
+                honknet_replication::ReplicationMode::Replicated,
+                &honknet_replication::NetMetadataComponent {
+                    name: format!("Player-{}", peer),
+                    description: "Human Engineer".to_string(),
+                    prototype_id: "MobHuman".to_string(),
+                },
+            );
+
+            let sprite_comp = honknet_replication::ComponentState::encode(
+                honknet_replication::NET_ID_SPRITE,
+                self.world.tick(),
+                honknet_replication::ReplicationMode::Replicated,
+                &honknet_replication::NetSpriteComponent {
+                    rsi_path: "Mobs/Species/Human/human.rsi".to_string(),
+                    state: "human_idle".to_string(),
+                    direction: 0,
+                    layer: 0,
+                    color: 0x00f0ff,
+                    visible: true,
+                },
+            );
+
+            self.replication.states.insert(
+                e,
+                honknet_replication::EntityState {
+                    entity: e,
+                    revision: self.world.tick(),
+                    position: pos,
+                    owner: Some(peer),
+                    importance: 100.0,
+                    frequency: 1,
+                    components: vec![transform_comp, physics_comp, meta_comp, sprite_comp],
+                },
+            );
         }
 
         // 5. Replication & Metrics Update

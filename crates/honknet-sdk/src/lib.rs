@@ -20,6 +20,13 @@ pub trait GamePlugin: Send {
     fn shutdown(&mut self, _world: &mut World) {}
 }
 
+pub trait GameModule: Send + Sync {
+    fn name(&self) -> &'static str;
+    fn register_components(&self, _world: &mut World) {}
+    fn register_prototypes(&self, _manager: &honknet_prototypes::PrototypeManager) {}
+    fn initialize_server(&self, _world: &mut World) {}
+}
+
 #[derive(Default)]
 pub struct PluginManager {
     plugins: Vec<Box<dyn GamePlugin>>,

@@ -1,0 +1,11 @@
+type: entity
+id: MobHuman
+name: Human Crewmember
+description: Standard human crewmember on Space Station 15.
+abstract: false
+data:
+  health: 100
+  speed: 250
+  sprite:
+    sprite: Mobs/Species/Human/human.rsi
+    state: human_idle

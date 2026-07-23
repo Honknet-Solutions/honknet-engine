@@ -1,9 +1,44 @@
-/target
-/node_modules
-/dist
+# Rust / Cargo
+/target/
+**/*.rs.bk
+*.rmeta
+
+# Node & JS Dependencies
+node_modules/
+**/node_modules/
+
+# Web Build Outputs & WASM PKG
+dist/
+**/dist/
+apps/honknet-web/pkg/
+apps/honknet-web/dist/
+apps/honknet-studio/dist/
+.vite/
+
+# Logs & Local Storage
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.honknet-cache/
+.honknet-data/
+
+# Environment & Secrets
 .env
-.honknet-cache
-.honknet-data
-.agent
-apps/honknet-studio/node_modules
+.env.local
+.env.*.local
+*.pem
+
+# Agent & Temporary Workspace Files
+.agent/
+scratch/
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo

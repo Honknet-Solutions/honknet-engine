@@ -12,4 +12,5 @@ honknet-map={path="../crates/honknet-map"}
 honknet-physics={path="../crates/honknet-physics"}
 honknet-persistence={path="../crates/honknet-persistence"}
 honknet-replay={path="../crates/honknet-replay"}
+honknet-runtime={path="../crates/honknet-runtime"}
 tokio.workspace=true

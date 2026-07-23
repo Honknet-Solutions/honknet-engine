@@ -82,6 +82,11 @@ export class WasmBridge {
         return this.runtime.create_hello_payload();
     }
 
+    public createAckPayload(ackedTick: number): Uint8Array | null {
+        if (!this.runtime || typeof this.runtime.create_ack_payload !== 'function') return null;
+        return this.runtime.create_ack_payload(BigInt(ackedTick));
+    }
+
     public getDiagnostics(): string {
         return this.runtime ? this.runtime.get_diagnostics() : 'WASM Not Initialized';
     }

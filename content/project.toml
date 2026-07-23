@@ -1,0 +1,21 @@
+[project]
+id = "space-station-15"
+name = "Space Station 15 (Honknet Edition)"
+version = "0.1.0"
+engine = ">=1.0.0-rc.1"
+
+[content]
+root = "content"
+prototypes = "content/prototypes"
+maps = "content/maps"
+textures = "content/textures"
+audio = "content/audio"
+localization = "content/localization"
+
+[network]
+protocol = 1
+
+[schemas]
+prototype = 1
+map = 1
+save = 1

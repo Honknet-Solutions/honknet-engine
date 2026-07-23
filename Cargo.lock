@@ -1715,6 +1715,7 @@ dependencies = [
  "honknet-persistence",
  "honknet-physics",
  "honknet-replay",
+ "honknet-runtime",
  "honknet-testing",
  "tokio",
 ]
@@ -2003,6 +2004,7 @@ dependencies = [
  "honknet-math",
  "honknet-net-core",
  "honknet-physics",
+ "honknet-prototypes",
  "honknet-replication",
  "honknet-ui",
  "serde",

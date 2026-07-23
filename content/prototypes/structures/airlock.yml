@@ -1,0 +1,10 @@
+type: entity
+id: DoorAirlock
+name: Station Airlock
+description: Heavy reinforced station airlock door.
+abstract: false
+data:
+  solid: true
+  sprite:
+    sprite: Structures/Doors/airlock.rsi
+    state: closed

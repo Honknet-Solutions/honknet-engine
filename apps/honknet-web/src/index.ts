@@ -1,4 +1,4 @@
-import { Graphics, Text, TextStyle } from 'pixi.js';
+import { Container, Graphics, Text, TextStyle } from 'pixi.js';
 import PixiApplication from './render/PixiApplication';
 import RenderLoop from './render/RenderLoop';
 import ResizeManager from './render/ResizeManager';
@@ -10,6 +10,7 @@ import { BrowserInputAdapter } from './input/BrowserInputAdapter';
 import { WasmBridge, RenderFrame } from './bridge/WasmBridge';
 import { TransportBridge } from './bridge/TransportBridge';
 import { ChunkRenderer } from './render/ChunkRenderer';
+import { RsiSpriteRenderer } from './render/RsiSpriteRenderer';
 
 async function bootstrap() {
     let canvas = document.querySelector<HTMLCanvasElement>('#game');
@@ -113,7 +114,8 @@ async function bootstrap() {
     });
 
     // 8. Dynamic Entity Graphics Container Map
-    const entityGfxMap = new Map<number, Graphics>();
+    const rsiSpriteRenderer = new RsiSpriteRenderer();
+    const entityGfxMap = new Map<number, Container>();
 
     // 9. Input & Render Loop
     const keysPressed: Record<string, boolean> = {};
@@ -129,9 +131,13 @@ async function bootstrap() {
     let inputSeq = 1;
     let lastSentMoveX = 0;
     let lastSentMoveY = 0;
+    let inputAccumulator = 0;
+    const INPUT_TICK_RATE = 1.0 / 30.0; // Fixed 30 TPS Input Rate Limit
 
     const loop = new RenderLoop();
     loop.addCallback((delta: number) => {
+        inputAccumulator += delta;
+
         // Collect normalized movement vector
         let moveX = 0;
         let moveY = 0;
@@ -147,18 +153,22 @@ async function bootstrap() {
             moveY /= len;
         }
 
-        // Transmit input when moving or when stopping (WASD key release)
-        if (moveX !== lastSentMoveX || moveY !== lastSentMoveY || moveX !== 0 || moveY !== 0) {
-            lastSentMoveX = moveX;
-            lastSentMoveY = moveY;
+        // Transmit input on fixed 30 TPS ticks or immediately on key release (stop)
+        const isStopping = (moveX === 0 && moveY === 0 && (lastSentMoveX !== 0 || lastSentMoveY !== 0));
+        if (inputAccumulator >= INPUT_TICK_RATE || isStopping) {
+            if (isStopping || moveX !== 0 || moveY !== 0 || lastSentMoveX !== 0 || lastSentMoveY !== 0) {
+                lastSentMoveX = moveX;
+                lastSentMoveY = moveY;
 
-            const seq = inputSeq++;
-            wasmBridge.pushInput(seq, moveX, moveY);
+                const seq = inputSeq++;
+                wasmBridge.pushInput(seq, moveX, moveY);
 
-            const inputPayload = wasmBridge.createInputPayload(seq, moveX, moveY);
-            if (inputPayload) {
-                transportBridge.send(inputPayload);
+                const inputPayload = wasmBridge.createInputPayload(seq, moveX, moveY);
+                if (inputPayload) {
+                    transportBridge.send(inputPayload);
+                }
             }
+            inputAccumulator %= INPUT_TICK_RATE;
         }
 
         // Tick WASM ClientRuntime
@@ -167,6 +177,13 @@ async function bootstrap() {
         // Extract RenderFrame from WASM and update PixiJS entities
         const frame: RenderFrame | null = wasmBridge.extractRenderFrame();
         if (frame) {
+            if (frame.tick) {
+                const ackPayload = wasmBridge.createAckPayload(frame.tick);
+                if (ackPayload) {
+                    transportBridge.send(ackPayload);
+                }
+            }
+
             if (frame.tiles && frame.tiles.length > 0) {
                 for (const tileUpdate of frame.tiles) {
                     chunkRenderer.updateChunk(tileUpdate);
@@ -176,36 +193,28 @@ async function bootstrap() {
             if (frame.sprites) {
                 const currentRenderIds = new Set<number>();
 
-            for (const sprite of frame.sprites) {
-                currentRenderIds.add(sprite.render_id);
+                for (const sprite of frame.sprites) {
+                    currentRenderIds.add(sprite.render_id);
 
-                let gfx = entityGfxMap.get(sprite.render_id);
-                if (!gfx) {
-                    gfx = new Graphics();
-                    gfx.circle(0, 0, 20);
-                    gfx.fill({ color: sprite.color || 0x00f0ff });
-                    gfx.stroke({ color: 0xffffff, width: 3 });
+                    let entityContainer = entityGfxMap.get(sprite.render_id);
+                    if (!entityContainer) {
+                        entityContainer = rsiSpriteRenderer.createEntityContainer(sprite) as any;
+                        sceneManager.entityLayer.addChild(entityContainer!);
+                        entityGfxMap.set(sprite.render_id, entityContainer! as any);
+                    }
 
-                    gfx.moveTo(0, 0);
-                    gfx.lineTo(30, 0);
-                    gfx.stroke({ color: 0xffffff, width: 4 });
-
-                    sceneManager.entityLayer.addChild(gfx);
-                    entityGfxMap.set(sprite.render_id, gfx);
+                    rsiSpriteRenderer.updateEntityContainer(entityContainer!, sprite);
                 }
 
-                gfx.position.set(sprite.x, sprite.y);
-            }
-
-            // Cleanup despawned / unrendered entities
-            for (const [id, gfx] of entityGfxMap.entries()) {
-                if (!currentRenderIds.has(id)) {
-                    sceneManager.entityLayer.removeChild(gfx);
-                    gfx.destroy();
-                    entityGfxMap.delete(id);
+                // Cleanup despawned / unrendered entities
+                for (const [id, entityContainer] of entityGfxMap.entries()) {
+                    if (!currentRenderIds.has(id)) {
+                        sceneManager.entityLayer.removeChild(entityContainer);
+                        entityContainer.destroy({ children: true });
+                        entityGfxMap.delete(id);
+                    }
                 }
             }
-        }
     }
 
         // Update HUD Diagnostics

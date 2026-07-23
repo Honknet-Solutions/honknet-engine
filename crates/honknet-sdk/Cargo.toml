@@ -15,5 +15,6 @@ honknet-net-core = { path = "../honknet-net-core" }
 honknet-replication = { path = "../honknet-replication" }
 honknet-ui = { path = "../honknet-ui" }
 honknet-macros = { path = "../honknet-macros" }
+honknet-prototypes = { path = "../honknet-prototypes" }
 serde.workspace = true
 

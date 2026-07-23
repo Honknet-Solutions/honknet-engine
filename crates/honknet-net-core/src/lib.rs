@@ -129,6 +129,15 @@ impl NetworkMessage for ClientInputPayload {
     const ID: u16 = 102;
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct StateAckPayload {
+    pub acked_tick: u64,
+}
+
+impl NetworkMessage for StateAckPayload {
+    const ID: u16 = 103;
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ConnectionState {
     Disconnected,

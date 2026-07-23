@@ -4,11 +4,11 @@ use futures_util::{SinkExt, StreamExt};
 use honknet_math::Vec2;
 use honknet_net_core::{
     decode_message, encode_message_envelope, ClientHelloPayload, ClientInputPayload,
-    NetworkMessage, NetworkPacketEnvelope, ServerWelcomePayload, PROTOCOL_VERSION,
+    NetworkMessage, NetworkPacketEnvelope, ServerWelcomePayload, StateAckPayload, PROTOCOL_VERSION,
 };
 use honknet_net_server::WsServer;
 use honknet_replication::{EntityState, Snapshot};
-use honknet_runtime::{EngineRuntime, EngineRuntimeConfig, VelocityComponent};
+use honknet_runtime::{EngineRuntime, EngineRuntimeConfig, PlayerPeer, VelocityComponent};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -20,6 +20,8 @@ struct Args {
     listen: SocketAddr,
     #[arg(long, default_value_t = 30)]
     tick_rate: u32,
+    #[arg(long, default_value = "content")]
+    project: std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -51,7 +53,7 @@ async fn main() -> Result<()> {
     })?;
 
     runtime.initialize();
-    runtime.load_content();
+    runtime.load_content_project(&args.project);
     runtime.ready();
     runtime.start();
 
@@ -122,8 +124,11 @@ async fn main() -> Result<()> {
                                             if let Some(token) = &hello.reconnect_token {
                                                 if let Some(id_str) = token.strip_prefix("rec-") {
                                                     if let Ok(old_peer) = id_str.parse::<u64>() {
-                                                        if let Some(&existing_entity) = r.players.get(&old_peer) {
+                                                        if let Some(existing_entity) = r.players.remove(&old_peer) {
                                                             r.players.insert(peer_id, existing_entity);
+                                                            if let Some(p) = r.world.get_mut::<PlayerPeer>(existing_entity) {
+                                                                p.0 = peer_id;
+                                                            }
                                                             reattached = true;
                                                             info!("Peer {} re-attached to existing character entity for reconnect token {}", peer_id, token);
                                                         }
@@ -173,6 +178,12 @@ async fn main() -> Result<()> {
                                                     b.velocity = target_vel;
                                                 }
                                             }
+                                        }
+                                    }
+                                    StateAckPayload::ID => {
+                                        if let Ok(ack) = decode_message::<StateAckPayload>(payload, compressed, 1024) {
+                                            let mut r = runtime_reader.lock().await;
+                                            r.client_baselines.insert(peer_id, ack.acked_tick);
                                         }
                                     }
                                     _ => {}

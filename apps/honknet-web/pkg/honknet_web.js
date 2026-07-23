@@ -72,6 +72,23 @@ export class WasmClientRuntime {
         }
     }
     /**
+     * @param {bigint} acked_tick
+     * @returns {Uint8Array}
+     */
+    create_ack_payload(acked_tick) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.wasmclientruntime_create_ack_payload(retptr, this.__wbg_ptr, acked_tick);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v1 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export(r0, r1 * 1, 1);
+            return v1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * @returns {Uint8Array}
      */
     create_hello_payload() {

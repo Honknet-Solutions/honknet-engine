@@ -15,6 +15,7 @@ export const wasmclientruntime_extract_render_frame: (a: number) => number;
 export const wasmclientruntime_ack_render_frame: (a: number, b: bigint) => void;
 export const wasmclientruntime_create_input_payload: (a: number, b: number, c: number, d: number, e: number) => void;
 export const wasmclientruntime_create_hello_payload: (a: number, b: number) => void;
+export const wasmclientruntime_create_ack_payload: (a: number, b: number, c: bigint) => void;
 export const wasmclientruntime_get_client_state: (a: number) => number;
 export const wasmclientruntime_get_diagnostics: (a: number, b: number) => void;
 export const rust_zstd_wasm_shim_qsort: (a: number, b: number, c: number, d: number) => void;
