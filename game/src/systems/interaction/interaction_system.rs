@@ -37,7 +37,10 @@ pub fn interaction_system(
 
         // 2. Check ID Card access requirements
         if !check_user_access(world, user, target) {
-            info!("Access Denied: User {:?} lacks required ID card access for door {:?}", user, target);
+            info!(
+                "Access Denied: User {:?} lacks required ID card access for door {:?}",
+                user, target
+            );
             return false;
         }
 
@@ -49,7 +52,10 @@ pub fn interaction_system(
                 DoorState::Closing => DoorState::Closed,
             };
             door_mut.timer = 0.0;
-            info!("Entity {:?} toggled door {:?} to state {:?}", user, target, door_mut.state);
+            info!(
+                "Entity {:?} toggled door {:?} to state {:?}",
+                user, target, door_mut.state
+            );
             return true;
         }
     }

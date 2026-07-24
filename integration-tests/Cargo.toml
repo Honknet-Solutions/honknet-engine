@@ -7,6 +7,7 @@ license.workspace=true
 honknet-testing={path="../crates/honknet-testing"}
 honknet-core={path="../crates/honknet-core"}
 honknet-ecs={path="../crates/honknet-ecs"}
+honknet-game={path="../game"}
 honknet-math={path="../crates/honknet-math"}
 honknet-map={path="../crates/honknet-map"}
 honknet-physics={path="../crates/honknet-physics"}

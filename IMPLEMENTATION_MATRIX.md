@@ -19,4 +19,5 @@
 | Auth / admin / observability / WASM | corresponding crates |
 | Runtime apps | `apps/` |
 | Studio | `apps/honknet-studio` |
-| CLI / SDK / templates / tests | `apps/honknet-cli`, `honknet-sdk`, `templates`, `integration-tests` |
+| Fixed game bootstrap and gameplay | `game`, `apps/honknet-server` |
+| CLI and tests | `apps/honknet-cli`, `integration-tests` |

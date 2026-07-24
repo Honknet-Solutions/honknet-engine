@@ -23,7 +23,10 @@ pub fn atmosphere_system(world: &mut World, _delta_time: f32) {
                 tile.air.oxygen -= burn_amount * 0.5;
                 tile.air.carbon_dioxide += burn_amount;
                 tile.air.temperature += burn_amount * 50.0;
-                info!("Plasma fire burning on tile {:?}! Temp: {}K", e, tile.air.temperature);
+                info!(
+                    "Plasma fire burning on tile {:?}! Temp: {}K",
+                    e, tile.air.temperature
+                );
             }
         }
     }

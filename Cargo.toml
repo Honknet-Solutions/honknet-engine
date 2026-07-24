@@ -33,7 +33,6 @@ members = [
   "crates/honknet-admin",
   "crates/honknet-observability",
   "crates/honknet-wasm",
-  "crates/honknet-sdk",
   "crates/honknet-testing",
   "crates/honknet-input",
   "crates/honknet-package",
@@ -62,7 +61,7 @@ edition = "2021"
 license = "Apache-2.0"
 authors = ["Honknet Solutions"]
 repository = "https://github.com/Honknet-Solutions/honknet-engine"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [workspace.dependencies]
 anyhow = "1.0"

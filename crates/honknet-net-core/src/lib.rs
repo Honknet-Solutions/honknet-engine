@@ -1,6 +1,9 @@
 use bitflags::bitflags;
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
+pub const BUILD_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const CONTENT_VERSION: &str = BUILD_VERSION;
+pub const CONTENT_MANIFEST_ID: &str = concat!("honknet-", env!("CARGO_PKG_VERSION"));
 pub const PROTOCOL_VERSION: u16 = 1;
 pub const MTU: usize = 1200;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

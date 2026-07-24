@@ -1328,25 +1328,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "game"
-version = "1.0.0-rc.1"
-dependencies = [
- "honknet-core",
- "honknet-ecs",
- "honknet-events",
- "honknet-map",
- "honknet-math",
- "honknet-net-core",
- "honknet-physics",
- "honknet-prototypes",
- "honknet-replication",
- "honknet-scheduler",
- "honknet-sdk",
- "serde",
- "tracing",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1703,6 +1684,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "honknet-game"
+version = "1.0.0-rc.1"
+dependencies = [
+ "anyhow",
+ "honknet-core",
+ "honknet-ecs",
+ "honknet-events",
+ "honknet-map",
+ "honknet-math",
+ "honknet-net-core",
+ "honknet-physics",
+ "honknet-prototypes",
+ "honknet-replication",
+ "honknet-runtime",
+ "honknet-scheduler",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "honknet-headless-client"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -1729,6 +1730,7 @@ version = "1.0.0-rc.1"
 dependencies = [
  "honknet-core",
  "honknet-ecs",
+ "honknet-game",
  "honknet-map",
  "honknet-math",
  "honknet-persistence",
@@ -2012,24 +2014,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "honknet-sdk"
-version = "1.0.0-rc.1"
-dependencies = [
- "honknet-core",
- "honknet-ecs",
- "honknet-events",
- "honknet-macros",
- "honknet-map",
- "honknet-math",
- "honknet-net-core",
- "honknet-physics",
- "honknet-prototypes",
- "honknet-replication",
- "honknet-ui",
- "serde",
-]
-
-[[package]]
 name = "honknet-serialization"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -2049,6 +2033,7 @@ dependencies = [
  "futures-util",
  "honknet-core",
  "honknet-ecs",
+ "honknet-game",
  "honknet-math",
  "honknet-net-core",
  "honknet-net-server",

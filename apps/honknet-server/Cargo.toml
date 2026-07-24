@@ -15,6 +15,7 @@ tracing-subscriber.workspace = true
 serde.workspace = true
 bincode.workspace = true
 honknet-core = { path = "../../crates/honknet-core" }
+honknet-game = { path = "../../game" }
 honknet-ecs = { path = "../../crates/honknet-ecs" }
 honknet-math = { path = "../../crates/honknet-math" }
 honknet-physics = { path = "../../crates/honknet-physics" }

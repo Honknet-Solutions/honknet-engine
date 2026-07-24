@@ -89,8 +89,14 @@ pub struct ComponentState {
 }
 
 impl ComponentState {
-    pub fn encode<T: Serialize>(component_id: ComponentNetId, revision: u64, mode: ReplicationMode, val: &T) -> Self {
-        let bytes = bincode::serde::encode_to_vec(val, bincode::config::standard()).unwrap_or_default();
+    pub fn encode<T: Serialize>(
+        component_id: ComponentNetId,
+        revision: u64,
+        mode: ReplicationMode,
+        val: &T,
+    ) -> Self {
+        let bytes =
+            bincode::serde::encode_to_vec(val, bincode::config::standard()).unwrap_or_default();
         Self {
             component_id,
             revision,
@@ -101,7 +107,8 @@ impl ComponentState {
     }
 
     pub fn decode<T: for<'de> Deserialize<'de>>(&self) -> Option<T> {
-        let (val, _) = bincode::serde::decode_from_slice(&self.bytes, bincode::config::standard()).ok()?;
+        let (val, _) =
+            bincode::serde::decode_from_slice(&self.bytes, bincode::config::standard()).ok()?;
         Some(val)
     }
 }

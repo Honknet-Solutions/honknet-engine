@@ -10,6 +10,8 @@ impl Component for InteractionComponent {}
 
 impl Default for InteractionComponent {
     fn default() -> Self {
-        Self { reach_distance: 2.5 }
+        Self {
+            reach_distance: 2.5,
+        }
     }
 }

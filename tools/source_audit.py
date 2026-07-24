@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXCLUDED_DIRECTORIES = {"target", "node_modules", ".git", ".agent"}
+EXCLUDED_DIRECTORIES = {"target", "node_modules", ".git", ".agents"}
 FORBIDDEN_TOKENS = (
     "todo!()",
     "unimplemented!()",

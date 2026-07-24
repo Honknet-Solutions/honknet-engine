@@ -1,5 +1,5 @@
-pub mod inventory;
 pub mod slots;
+pub mod storage;
 
-pub use inventory::*;
 pub use slots::*;
+pub use storage::*;

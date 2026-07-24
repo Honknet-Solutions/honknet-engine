@@ -30,7 +30,10 @@ pub fn chemistry_system(world: &mut World, delta_time: f32) {
             if let Some(health) = world.get_mut::<HealthComponent>(e) {
                 if heal_brute != 0.0 || heal_burn != 0.0 {
                     health.current = (health.current + heal_brute + heal_burn).min(health.max);
-                    info!("Metabolized medicine for entity {:?}. New HP: {}", e, health.current);
+                    info!(
+                        "Metabolized medicine for entity {:?}. New HP: {}",
+                        e, health.current
+                    );
                 }
             }
         }

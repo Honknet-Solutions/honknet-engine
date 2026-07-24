@@ -41,7 +41,10 @@ pub fn attack_entity(world: &mut World, attacker: Entity, target: Entity) -> boo
             }
         }
         CombatIntent::Disarm => {
-            info!("Attacker {:?} attempted to disarm target {:?}", attacker, target);
+            info!(
+                "Attacker {:?} attempted to disarm target {:?}",
+                attacker, target
+            );
             return true;
         }
         CombatIntent::Help => {

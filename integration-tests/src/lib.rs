@@ -113,10 +113,10 @@ mod tests {
 
     #[tokio::test]
     async fn multi_client_reconnection_and_session_rebind() {
-        use honknet_runtime::{EngineRuntime, EngineRuntimeConfig, PlayerPeer};
-        use std::path::PathBuf;
+        use honknet_game::GameApplication;
+        use honknet_runtime::{EngineRuntimeConfig, PlayerPeer};
 
-        let mut runtime = EngineRuntime::new(EngineRuntimeConfig {
+        let mut runtime = GameApplication::new(EngineRuntimeConfig {
             tick_rate: 30,
             listen_address: "127.0.0.1:0".to_string(),
             persistence_path: None,
@@ -125,12 +125,10 @@ mod tests {
             session_key: b"session-key".to_vec(),
             reconnect_key: b"reconnect-key".to_vec(),
         })
-        .unwrap();
-
-        runtime.initialize();
-        runtime.load_content_project(&PathBuf::from("game"));
-        runtime.ready();
-        runtime.start();
+        .unwrap()
+        .initialize()
+        .unwrap()
+        .into_runtime();
 
         // 1. First client connects (peer 100)
         let player_entity = runtime.spawn_player(100, Vec2::new(10.0, 20.0)).unwrap();
@@ -139,7 +137,10 @@ mod tests {
         // 2. Peer disconnects & reconnects on new peer ID 101 with token rec-100
         let old_peer: u64 = 100;
         let new_peer: u64 = 101;
-        let existing_entity = runtime.players.remove(&old_peer).expect("Old peer mapped entity");
+        let existing_entity = runtime
+            .players
+            .remove(&old_peer)
+            .expect("Old peer mapped entity");
         runtime.players.insert(new_peer, existing_entity);
         if let Some(p) = runtime.world.get_mut::<PlayerPeer>(existing_entity) {
             p.0 = new_peer;
@@ -148,6 +149,9 @@ mod tests {
         // 3. Verify clean re-binding
         assert_eq!(runtime.players.get(&100), None);
         assert_eq!(runtime.players.get(&101), Some(&player_entity));
-        assert_eq!(runtime.world.get::<PlayerPeer>(player_entity).unwrap().0, 101);
+        assert_eq!(
+            runtime.world.get::<PlayerPeer>(player_entity).unwrap().0,
+            101
+        );
     }
 }

@@ -17,6 +17,8 @@ impl Component for MobStateComponent {}
 
 impl Default for MobStateComponent {
     fn default() -> Self {
-        Self { state: MobState::Alive }
+        Self {
+            state: MobState::Alive,
+        }
     }
 }

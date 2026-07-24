@@ -1,7 +1,0 @@
-type: map
-id: TestMap
-tile_size: 1
-grids:
-  - id: Main
-    position: [0, 0]
-    chunks: []

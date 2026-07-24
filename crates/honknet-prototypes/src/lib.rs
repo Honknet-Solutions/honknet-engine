@@ -17,6 +17,34 @@ pub struct Prototype {
     pub data: Mapping,
 }
 
+#[derive(Deserialize)]
+struct PrototypeDocument {
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
+    id: String,
+    #[serde(default, rename = "abstract")]
+    abstract_: bool,
+    #[serde(default)]
+    parents: Vec<String>,
+    #[serde(default)]
+    data: Mapping,
+    #[serde(flatten)]
+    fields: Mapping,
+}
+
+impl PrototypeDocument {
+    fn into_prototype(mut self) -> Prototype {
+        merge(&mut self.data, &self.fields);
+        Prototype {
+            kind: self.kind.unwrap_or_else(|| "entity".to_string()),
+            id: self.id,
+            abstract_: self.abstract_,
+            parents: self.parents,
+            data: self.data,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum PrototypeError {
     #[error("YAML: {0}")]
@@ -118,18 +146,51 @@ pub struct PrototypeManager {
 
 impl PrototypeManager {
     pub fn load_yaml(&self, text: &str) -> Result<usize, PrototypeError> {
-        let mut count = 0;
-        for doc in serde_yaml::Deserializer::from_str(text) {
-            let p = Prototype::deserialize(doc)?;
-            self.schemas.validate(&p)?;
-            if self.raw.write().insert(p.id.clone(), p).is_some() {
+        self.load_yaml_batch([text])
+    }
+
+    pub fn load_yaml_batch<I, S>(&self, sources: I) -> Result<usize, PrototypeError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let mut additions = Vec::new();
+        for source in sources {
+            for document in serde_yaml::Deserializer::from_str(source.as_ref()) {
+                let value = Value::deserialize(document)?;
+                match value {
+                    Value::Sequence(values) => {
+                        for value in values {
+                            additions.push(PrototypeDocument::deserialize(value)?.into_prototype());
+                        }
+                    }
+                    value => {
+                        additions.push(PrototypeDocument::deserialize(value)?.into_prototype())
+                    }
+                }
+            }
+        }
+
+        let count = additions.len();
+        let mut candidate = self.raw.read().clone();
+        for prototype in additions {
+            self.schemas.validate(&prototype)?;
+            if candidate.insert(prototype.id.clone(), prototype).is_some() {
                 return Err(PrototypeError::Duplicate(
                     "duplicate id in load batch".into(),
                 ));
             }
-            count += 1
         }
-        self.resolve_all()?;
+
+        let mut resolved = HashMap::new();
+        for id in candidate.keys() {
+            let mut stack = vec![];
+            let mapping = resolve(id, &candidate, &mut resolved, &mut stack)?;
+            resolved.insert(id.clone(), mapping);
+        }
+
+        *self.raw.write() = candidate;
+        *self.resolved.write() = resolved;
         Ok(count)
     }
     pub fn get(&self, id: &str) -> Option<Mapping> {
@@ -199,5 +260,37 @@ fn merge(dst: &mut Mapping, src: &Mapping) {
                 dst.insert(k.clone(), v.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_loads_yaml_sequences_and_cross_file_parents() {
+        let manager = PrototypeManager::default();
+        let count = manager
+            .load_yaml_batch([
+                "- type: entity\n  id: Child\n  parents: [Base]\n  value: child\n",
+                "- type: entity\n  id: Base\n  value: base\n",
+            ])
+            .unwrap();
+
+        assert_eq!(count, 2);
+        assert!(manager.get("Child").is_some());
+        assert!(manager.get("Base").is_some());
+    }
+
+    #[test]
+    fn failed_batch_does_not_change_registry() {
+        let manager = PrototypeManager::default();
+        let result = manager.load_yaml_batch([
+            "type: entity\nid: Valid\n",
+            "type: entity\nid: Invalid\nparents: [Missing]\n",
+        ]);
+
+        assert!(matches!(result, Err(PrototypeError::MissingParent(_))));
+        assert!(manager.get("Valid").is_none());
     }
 }

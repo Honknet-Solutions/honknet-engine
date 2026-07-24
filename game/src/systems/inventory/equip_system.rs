@@ -18,7 +18,10 @@ pub fn equip_item(world: &mut World, user: Entity, slot: EquipmentSlot) -> bool 
                 if let Some(item_comp) = world.get_mut::<ItemComponent>(item) {
                     item_comp.in_container = Some(user);
                 }
-                info!("Equipped item {:?} to slot {:?} for user {:?}", item, slot, user);
+                info!(
+                    "Equipped item {:?} to slot {:?} for user {:?}",
+                    item, slot, user
+                );
                 return true;
             }
         }

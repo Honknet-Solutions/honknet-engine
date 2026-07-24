@@ -29,7 +29,9 @@ pub fn check_user_access(world: &World, user: Entity, target: Entity) -> bool {
 
     if let Some(card_e) = id_card_entity {
         if let Some(card) = world.get::<IdCardComponent>(card_e) {
-            return required_tags.iter().any(|tag| card.access_tags.contains(tag));
+            return required_tags
+                .iter()
+                .any(|tag| card.access_tags.contains(tag));
         }
     }
 

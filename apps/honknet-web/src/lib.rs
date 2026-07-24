@@ -2,7 +2,7 @@ use honknet_client_runtime::{ClientConnectionState, ClientRuntime};
 use honknet_math::Vec2;
 use honknet_net_core::{
     decode_message, encode_message_envelope, NetworkMessage, NetworkPacketEnvelope,
-    ServerWelcomePayload,
+    ServerWelcomePayload, BUILD_VERSION, CONTENT_MANIFEST_ID, CONTENT_VERSION,
 };
 use honknet_replication::{Delta, Snapshot};
 use wasm_bindgen::prelude::*;
@@ -38,7 +38,8 @@ impl WasmClientRuntime {
     }
 
     pub fn connect_client(&mut self, _url: &str) -> Result<(), JsValue> {
-        self.runtime.set_state(ClientConnectionState::TransportConnecting);
+        self.runtime
+            .set_state(ClientConnectionState::TransportConnecting);
         Ok(())
     }
 
@@ -53,7 +54,9 @@ impl WasmClientRuntime {
             let compressed = (env.flags & 4) != 0;
             match env.message_id {
                 Snapshot::ID => {
-                    if let Ok(snapshot) = decode_message::<Snapshot>(payload, compressed, 1024 * 1024) {
+                    if let Ok(snapshot) =
+                        decode_message::<Snapshot>(payload, compressed, 1024 * 1024)
+                    {
                         self.runtime.apply_snapshot(&snapshot);
                         self.runtime.set_state(ClientConnectionState::Active);
                     }
@@ -65,7 +68,9 @@ impl WasmClientRuntime {
                     }
                 }
                 ServerWelcomePayload::ID => {
-                    if let Ok(welcome) = decode_message::<ServerWelcomePayload>(payload, compressed, 1024) {
+                    if let Ok(welcome) =
+                        decode_message::<ServerWelcomePayload>(payload, compressed, 1024)
+                    {
                         self.session_peer_id = welcome.peer_id;
                         self.reconnect_token = welcome.reconnect_token;
                         self.runtime.set_state(ClientConnectionState::Active);
@@ -121,9 +126,9 @@ impl WasmClientRuntime {
     pub fn create_hello_payload(&self) -> Vec<u8> {
         let hello = honknet_net_core::ClientHelloPayload {
             protocol_version: honknet_net_core::PROTOCOL_VERSION,
-            engine_version: "1.0.0-rc.1".to_string(),
-            content_version: "1.0.0".to_string(),
-            content_manifest_hash: "ss15-manifest".to_string(),
+            engine_version: BUILD_VERSION.to_string(),
+            content_version: CONTENT_VERSION.to_string(),
+            content_manifest_hash: CONTENT_MANIFEST_ID.to_string(),
             supported_compression: vec![],
             auth_token: Some("auth-ok".to_string()),
             reconnect_token: self.reconnect_token.clone(),

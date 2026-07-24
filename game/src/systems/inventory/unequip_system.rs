@@ -16,7 +16,10 @@ pub fn unequip_item(world: &mut World, user: Entity, slot: EquipmentSlot) -> Opt
                 if let Some(hands) = world.get_mut::<HandsComponent>(user) {
                     hands.item_in_hand = Some(item);
                 }
-                info!("Unequipped item {:?} from slot {:?} to hand for user {:?}", item, slot, user);
+                info!(
+                    "Unequipped item {:?} from slot {:?} to hand for user {:?}",
+                    item, slot, user
+                );
                 return Some(item);
             }
         }

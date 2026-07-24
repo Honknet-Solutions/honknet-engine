@@ -76,7 +76,11 @@ pub struct SpriteComponent {
 }
 impl Component for SpriteComponent {}
 
-fn apply_entity_state(world: &mut World, local_entity: Entity, e_state: &honknet_replication::EntityState) {
+fn apply_entity_state(
+    world: &mut World,
+    local_entity: Entity,
+    e_state: &honknet_replication::EntityState,
+) {
     if let Some(pos) = world.get_mut::<PositionComponent>(local_entity) {
         pos.0 = e_state.position;
     } else {
@@ -86,7 +90,9 @@ fn apply_entity_state(world: &mut World, local_entity: Entity, e_state: &honknet
     for comp_state in &e_state.components {
         match comp_state.component_id {
             honknet_replication::NET_ID_METADATA => {
-                if let Some(net_meta) = comp_state.decode::<honknet_replication::NetMetadataComponent>() {
+                if let Some(net_meta) =
+                    comp_state.decode::<honknet_replication::NetMetadataComponent>()
+                {
                     let meta = MetadataComponent {
                         name: net_meta.name,
                         description: net_meta.description,
@@ -100,7 +106,9 @@ fn apply_entity_state(world: &mut World, local_entity: Entity, e_state: &honknet
                 }
             }
             honknet_replication::NET_ID_SPRITE => {
-                if let Some(net_sprite) = comp_state.decode::<honknet_replication::NetSpriteComponent>() {
+                if let Some(net_sprite) =
+                    comp_state.decode::<honknet_replication::NetSpriteComponent>()
+                {
                     let sprite = SpriteComponent {
                         rsi_path: net_sprite.rsi_path,
                         state: net_sprite.state,
@@ -214,14 +222,15 @@ impl ClientRuntime {
 
         for spawn in &delta.spawns {
             let server_id = ServerEntityId(spawn.entity);
-            let local_entity = if let Some(&local_id) = self.entity_mapping.server_to_local.get(&server_id) {
-                local_id.0
-            } else {
-                let new_local = self.world.spawn();
-                self.entity_mapping
-                    .insert(server_id, LocalEntityId(new_local));
-                new_local
-            };
+            let local_entity =
+                if let Some(&local_id) = self.entity_mapping.server_to_local.get(&server_id) {
+                    local_id.0
+                } else {
+                    let new_local = self.world.spawn();
+                    self.entity_mapping
+                        .insert(server_id, LocalEntityId(new_local));
+                    new_local
+                };
 
             if self.controlled_entity.is_none() {
                 self.controlled_entity = Some(local_entity);
@@ -260,11 +269,12 @@ impl ClientRuntime {
         };
         self.predicted_position += movement * (250.0 * dt);
 
-        self.prediction.record_input(honknet_prediction::InputFrame {
-            tick: self.client_tick,
-            sequence: seq as u32,
-            bytes: vec![],
-        });
+        self.prediction
+            .record_input(honknet_prediction::InputFrame {
+                tick: self.client_tick,
+                sequence: seq as u32,
+                bytes: vec![],
+            });
     }
 
     pub fn clean_confirmed_input(&mut self, acked_seq: u64) {
@@ -292,7 +302,9 @@ impl ClientRuntime {
         for entity in self.world.query::<PositionComponent>() {
             if let Some(pos) = self.world.get::<PositionComponent>(entity) {
                 let uid = ((entity.index as u64) << 32) | (entity.generation as u64);
-                let (render_x, render_y) = if Some(entity) == self.controlled_entity && self.predicted_position != Vec2::ZERO {
+                let (render_x, render_y) = if Some(entity) == self.controlled_entity
+                    && self.predicted_position != Vec2::ZERO
+                {
                     (self.predicted_position.x, self.predicted_position.y)
                 } else {
                     (pos.0.x, pos.0.y)

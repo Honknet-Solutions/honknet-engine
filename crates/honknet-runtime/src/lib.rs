@@ -181,43 +181,6 @@ impl EngineRuntime {
     pub fn initialize(&mut self) {
         self.state = EngineRuntimeState::Initializing;
     }
-    pub fn load_content(&mut self) {
-        self.load_content_project(&PathBuf::from("content"));
-    }
-
-    pub fn load_content_project(&mut self, path: &PathBuf) {
-        self.state = EngineRuntimeState::LoadingContent;
-
-        fn walk_and_load(dir: &PathBuf, manager: &honknet_prototypes::PrototypeManager) {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    let p = entry.path();
-                    if p.is_dir() {
-                        walk_and_load(&p, manager);
-                    } else if p.extension().is_some_and(|e| e == "yml" || e == "yaml") {
-                        if let Ok(text) = std::fs::read_to_string(&p) {
-                            if let Err(e) = manager.load_yaml(&text) {
-                                tracing::warn!("Failed loading prototype {:?}: {e}", p);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        walk_and_load(path, &self.prototypes);
-
-        // Initialize station map grid (Grid entity)
-        let grid_entity = self.world.spawn();
-        let mut station_grid = honknet_map::Grid {
-            entity: grid_entity,
-            transform: honknet_math::Transform2::IDENTITY,
-            chunks: HashMap::new(),
-            revision: 1,
-        };
-        station_grid.chunks.insert((0, 0), honknet_map::Chunk::new((0, 0), 1));
-        self.map.grids.insert(grid_entity, station_grid);
-    }
     pub fn ready(&mut self) {
         self.state = EngineRuntimeState::Ready;
     }
@@ -353,7 +316,7 @@ impl EngineRuntime {
                 self.world.tick(),
                 honknet_replication::ReplicationMode::Replicated,
                 &honknet_replication::NetMetadataComponent {
-                    name: format!("Player-{}", peer),
+                    name: format!("Player-{peer}"),
                     description: "Human Engineer".to_string(),
                     prototype_id: "MobHuman".to_string(),
                 },

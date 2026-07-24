@@ -12,8 +12,8 @@ pub struct GasMix {
 impl Default for GasMix {
     fn default() -> Self {
         Self {
-            oxygen: 21.0,        // 21% O2
-            nitrogen: 79.0,      // 79% N2
+            oxygen: 21.0,   // 21% O2
+            nitrogen: 79.0, // 79% N2
             carbon_dioxide: 0.0,
             plasma: 0.0,
             temperature: 293.15, // 20°C / Room temperature

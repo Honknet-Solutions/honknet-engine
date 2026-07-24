@@ -30,7 +30,7 @@ yarn-error.log*
 *.pem
 
 # Agent & Temporary Workspace Files
-.agent/
+.agents/
 scratch/
 
 # OS & Editor Files
