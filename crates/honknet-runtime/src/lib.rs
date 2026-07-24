@@ -3,15 +3,15 @@ use honknet_admin::AdminConsole;
 use honknet_auth::TokenIssuer;
 use honknet_core::Entity;
 use honknet_ecs::{Component, World};
-use honknet_events::EventBus;
+use honknet_events::{EventBus, SignalBus};
 use honknet_map::Map;
 use honknet_math::Vec2;
 use honknet_observability::{HealthState, Metrics};
-use honknet_persistence::FileBackend;
+use honknet_persistence::{FileBackend, PersistenceBackend};
 use honknet_physics::{Body, Fixture, PhysicsWorld, Shape};
 use honknet_prediction::PredictionBuffer;
 use honknet_prototypes::PrototypeManager;
-use honknet_replay::{ReplayHeader, ReplayRecorder};
+use honknet_replay::{ReplayEvent, ReplayHeader, ReplayRecorder};
 use honknet_replication::{Replicator, SpatialProvider};
 use honknet_resources::Vfs;
 use honknet_scheduler::{Scheduler, System};
@@ -81,6 +81,7 @@ pub struct EngineRuntime {
     pub world: World,
     pub scheduler: Scheduler,
     pub event_bus: EventBus,
+    pub signal_bus: SignalBus,
     pub physics: PhysicsWorld,
     pub map: Map,
     pub vfs: Vfs,
@@ -100,17 +101,29 @@ pub struct EngineRuntime {
     pub deterministic_seed: u64,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct RuntimePersistenceState {
+    tick: u64,
+    map: Map,
+    players: HashMap<u64, Entity>,
+    deterministic_seed: u64,
+}
+
 impl EngineRuntime {
     pub fn new(config: EngineRuntimeConfig) -> Result<Self> {
         let world = World::default();
         let scheduler = Scheduler::default();
         let event_bus = EventBus::default();
+        let signal_bus = SignalBus::default();
         let physics = PhysicsWorld::default();
         let map = Map {
             id: 1,
             tile_size: 1.0,
             tiles: vec![],
             grids: HashMap::new(),
+            areas: HashMap::new(),
+            transitions: HashMap::new(),
+            docking_ports: HashMap::new(),
             metadata: HashMap::new(),
             streaming_regions: vec![],
             dirty_chunks: honknet_map::DirtyChunkQueue::default(),
@@ -138,9 +151,9 @@ impl EngineRuntime {
 
         let replay = if let Some(ref path) = config.replay_path {
             let header = ReplayHeader {
-                engine_version: "1.0.0-rc.1".to_string(),
-                protocol: 1,
-                content_hash: "initial-hash".to_string(),
+                engine_version: honknet_net_core::BUILD_VERSION.to_string(),
+                protocol: honknet_net_core::PROTOCOL_VERSION,
+                content_hash: honknet_net_core::CONTENT_MANIFEST_ID.to_string(),
                 initial_state: vec![],
                 seed: 1337,
             };
@@ -154,6 +167,7 @@ impl EngineRuntime {
             world,
             scheduler,
             event_bus,
+            signal_bus,
             physics,
             map,
             vfs,
@@ -261,6 +275,7 @@ impl EngineRuntime {
         }
 
         // 2. Physics Simulation Step
+        self.map.update_moving_grids(delta_seconds);
         self.physics.step(delta_seconds);
 
         // 3. Sync Physics Positions back into ECS World Components
@@ -336,16 +351,49 @@ impl EngineRuntime {
                 },
             );
 
+            let mut components = vec![transform_comp, physics_comp, meta_comp, sprite_comp];
+            if let Some(previous) = self.replication.states.get(&e) {
+                components.extend(
+                    previous
+                        .components
+                        .iter()
+                        .filter(|component| component.component_id >= 100)
+                        .cloned(),
+                );
+            }
+            let revision = self
+                .replication
+                .states
+                .get(&e)
+                .filter(|previous| {
+                    previous.position == pos
+                        && previous.owner == Some(peer)
+                        && previous
+                            .components
+                            .iter()
+                            .filter(|component| component.component_id < 100)
+                            .count()
+                            == 4
+                        && previous
+                            .components
+                            .iter()
+                            .filter(|component| component.component_id < 100)
+                            .zip(&components)
+                            .all(|(old, new)| {
+                                old.component_id == new.component_id && old.bytes == new.bytes
+                            })
+                })
+                .map_or(self.world.tick(), |previous| previous.revision);
             self.replication.states.insert(
                 e,
                 honknet_replication::EntityState {
                     entity: e,
-                    revision: self.world.tick(),
+                    revision,
                     position: pos,
                     owner: Some(peer),
                     importance: 100.0,
                     frequency: 1,
-                    components: vec![transform_comp, physics_comp, meta_comp, sprite_comp],
+                    components,
                 },
             );
         }
@@ -357,6 +405,20 @@ impl EngineRuntime {
         self.metrics
             .physics_contacts
             .set(self.physics.events.len() as i64);
+        if let Some(replay) = self.replay.as_mut() {
+            let states = self
+                .replication
+                .states
+                .values()
+                .cloned()
+                .collect::<Vec<_>>();
+            if let Ok(data) = serde_json::to_vec(&states) {
+                let _ = replay.push(&ReplayEvent::Replicated {
+                    tick: self.world.tick(),
+                    data,
+                });
+            }
+        }
 
         Ok(())
     }
@@ -439,7 +501,17 @@ impl EngineRuntime {
     ) -> Option<honknet_replication::Delta> {
         let snapshot = self.build_client_snapshot(peer, byte_budget);
         if let Some(&baseline) = self.client_baselines.get(&peer) {
-            self.replication.delta(baseline, &snapshot)
+            self.replication
+                .delta(peer, baseline, &snapshot)
+                .or_else(|| {
+                    Some(honknet_replication::Delta {
+                        tick: snapshot.tick,
+                        baseline: 0,
+                        spawns: snapshot.entities,
+                        updates: vec![],
+                        despawns: vec![],
+                    })
+                })
         } else {
             Some(honknet_replication::Delta {
                 tick: snapshot.tick,
@@ -449,6 +521,52 @@ impl EngineRuntime {
                 despawns: vec![],
             })
         }
+    }
+
+    pub fn record_client_input(&mut self, client: u64, data: Vec<u8>) {
+        if let Some(replay) = self.replay.as_mut() {
+            let _ = replay.push(&ReplayEvent::Input {
+                tick: self.world.tick(),
+                client,
+                data,
+            });
+        }
+    }
+
+    pub fn record_replay_marker(&mut self, name: impl Into<String>) {
+        if let Some(replay) = self.replay.as_mut() {
+            let _ = replay.push(&ReplayEvent::Marker {
+                tick: self.world.tick(),
+                name: name.into(),
+            });
+        }
+    }
+
+    pub fn persist_checkpoint(&self) -> Result<Option<String>> {
+        let Some(persistence) = &self.persistence else {
+            return Ok(None);
+        };
+        let state = RuntimePersistenceState {
+            tick: self.world.tick(),
+            map: self.map.clone(),
+            players: self.players.clone(),
+            deterministic_seed: self.deterministic_seed,
+        };
+        let data = bincode::serde::encode_to_vec(&state, bincode::config::standard())
+            .map_err(|error| anyhow::anyhow!("persistence encode failed: {error}"))?;
+        persistence.commit("game", &data)?;
+        Ok(Some(persistence.checkpoint("game")?))
+    }
+
+    pub fn finalize_shutdown(&mut self) -> Result<()> {
+        self.state = EngineRuntimeState::ShuttingDown;
+        self.record_replay_marker("server_shutdown");
+        if let Some(replay) = self.replay.take() {
+            replay.finish()?;
+        }
+        self.persist_checkpoint()?;
+        self.state = EngineRuntimeState::Stopped;
+        Ok(())
     }
 }
 

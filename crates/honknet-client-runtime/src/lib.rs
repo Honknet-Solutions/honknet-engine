@@ -76,6 +76,20 @@ pub struct SpriteComponent {
 }
 impl Component for SpriteComponent {}
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OwnerHudState {
+    pub mob_state: Option<String>,
+    pub hands: Option<honknet_replication::NetHandsComponent>,
+    pub equipment: Option<honknet_replication::NetEquipmentComponent>,
+    pub medical: Option<honknet_replication::NetMedicalStatusComponent>,
+    pub interaction: Option<honknet_replication::NetInteractionStatusComponent>,
+}
+impl Component for OwnerHudState {}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PredictionAckComponent(pub u32);
+impl Component for PredictionAckComponent {}
+
 fn apply_entity_state(
     world: &mut World,
     local_entity: Entity,
@@ -121,6 +135,62 @@ fn apply_entity_state(
                         *s = sprite;
                     } else {
                         let _ = world.insert(local_entity, sprite);
+                    }
+                }
+            }
+            honknet_replication::NET_ID_MOB_STATUS => {
+                if let Some(status) =
+                    comp_state.decode::<honknet_replication::NetMobStatusComponent>()
+                {
+                    let hud = world.get_mut::<OwnerHudState>(local_entity);
+                    if let Some(hud) = hud {
+                        hud.mob_state = Some(status.state);
+                    } else {
+                        let _ = world.insert(
+                            local_entity,
+                            OwnerHudState {
+                                mob_state: Some(status.state),
+                                ..OwnerHudState::default()
+                            },
+                        );
+                    }
+                }
+            }
+            honknet_replication::NET_ID_HANDS
+            | honknet_replication::NET_ID_EQUIPMENT
+            | honknet_replication::NET_ID_MEDICAL_STATUS
+            | honknet_replication::NET_ID_INTERACTION_STATUS => {
+                if !world.contains::<OwnerHudState>(local_entity) {
+                    let _ = world.insert(local_entity, OwnerHudState::default());
+                }
+                let hud = world.get_mut::<OwnerHudState>(local_entity).unwrap();
+                match comp_state.component_id {
+                    honknet_replication::NET_ID_HANDS => {
+                        hud.hands = comp_state.decode();
+                    }
+                    honknet_replication::NET_ID_EQUIPMENT => {
+                        hud.equipment = comp_state.decode();
+                    }
+                    honknet_replication::NET_ID_MEDICAL_STATUS => {
+                        hud.medical = comp_state.decode();
+                    }
+                    honknet_replication::NET_ID_INTERACTION_STATUS => {
+                        hud.interaction = comp_state.decode();
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            honknet_replication::NET_ID_PREDICTION_ACK => {
+                if let Some(ack) =
+                    comp_state.decode::<honknet_replication::NetPredictionAckComponent>()
+                {
+                    if let Some(component) = world.get_mut::<PredictionAckComponent>(local_entity) {
+                        component.0 = ack.last_processed_input;
+                    } else {
+                        let _ = world.insert(
+                            local_entity,
+                            PredictionAckComponent(ack.last_processed_input),
+                        );
                     }
                 }
             }
@@ -207,12 +277,19 @@ impl ClientRuntime {
                     new_local
                 };
 
-            if self.controlled_entity.is_none() {
+            let is_owned = e_state
+                .components
+                .iter()
+                .any(|component| component.mode == honknet_replication::ReplicationMode::OwnerOnly);
+            if self.controlled_entity.is_none() || is_owned {
                 self.controlled_entity = Some(local_entity);
                 self.predicted_position = e_state.position;
             }
 
             apply_entity_state(&mut self.world, local_entity, e_state);
+            if is_owned {
+                self.reconcile_controlled(local_entity, e_state.position);
+            }
         }
     }
 
@@ -232,7 +309,11 @@ impl ClientRuntime {
                     new_local
                 };
 
-            if self.controlled_entity.is_none() {
+            let is_owned = spawn
+                .components
+                .iter()
+                .any(|component| component.mode == honknet_replication::ReplicationMode::OwnerOnly);
+            if self.controlled_entity.is_none() || is_owned {
                 self.controlled_entity = Some(local_entity);
                 self.predicted_position = spawn.position;
             }
@@ -246,7 +327,15 @@ impl ClientRuntime {
                 .server_to_local
                 .get(&ServerEntityId(update.entity))
             {
+                if update.components.iter().any(|component| {
+                    component.mode == honknet_replication::ReplicationMode::OwnerOnly
+                }) {
+                    self.controlled_entity = Some(local_id.0);
+                }
                 apply_entity_state(&mut self.world, local_id.0, update);
+                if Some(local_id.0) == self.controlled_entity {
+                    self.reconcile_controlled(local_id.0, update.position);
+                }
             }
         }
 
@@ -284,6 +373,41 @@ impl ClientRuntime {
             } else {
                 break;
             }
+        }
+    }
+
+    fn reconcile_controlled(&mut self, entity: Entity, authoritative_position: Vec2) {
+        let acknowledged = self
+            .world
+            .get::<PredictionAckComponent>(entity)
+            .map_or(0, |component| component.0 as u64);
+        self.clean_confirmed_input(acknowledged);
+        let old_prediction = self.predicted_position;
+        let hud = self.world.get::<OwnerHudState>(entity);
+        let movement_allowed = hud
+            .and_then(|state| state.interaction.as_ref())
+            .is_none_or(|interaction| interaction.buckled_to.is_none());
+        let speed = if hud
+            .and_then(|state| state.interaction.as_ref())
+            .is_some_and(|interaction| interaction.carrying.is_some())
+        {
+            125.0
+        } else {
+            250.0
+        };
+        let dt = 1.0 / self.tick_rate.max(1.0);
+        self.predicted_position = authoritative_position;
+        if movement_allowed {
+            for (_, movement) in &self.input_queue {
+                self.predicted_position += *movement * (speed * dt);
+            }
+        }
+        let error = (old_prediction - self.predicted_position).length();
+        self.prediction.diagnostics.last_error = error;
+        self.prediction.diagnostics.max_error = self.prediction.diagnostics.max_error.max(error);
+        if error > 0.01 {
+            self.prediction.diagnostics.rollbacks += 1;
+            self.prediction.diagnostics.replays += self.input_queue.len() as u64;
         }
     }
 
@@ -337,7 +461,7 @@ impl ClientRuntime {
         }
 
         RenderFrame {
-            tick: self.client_tick,
+            tick: self.clock.server_tick,
             interpolation_alpha: 1.0,
             cameras: vec![RenderCamera {
                 id: 1,
@@ -352,6 +476,13 @@ impl ClientRuntime {
             ui_commands: vec![],
             removals: vec![],
         }
+    }
+
+    pub fn owner_hud_state(&self) -> OwnerHudState {
+        self.controlled_entity
+            .and_then(|entity| self.world.get::<OwnerHudState>(entity))
+            .cloned()
+            .unwrap_or_default()
     }
 }
 
@@ -430,3 +561,55 @@ pub struct RenderUiCommand {
 }
 
 pub type RenderObjectId = u64;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use honknet_replication::{
+        ComponentState, EntityState, NetPredictionAckComponent, ReplicationMode,
+        NET_ID_PREDICTION_ACK,
+    };
+
+    fn authoritative_state(entity: Entity, tick: u64, x: f32, ack: u32) -> EntityState {
+        EntityState {
+            entity,
+            revision: tick,
+            position: Vec2::new(x, 0.0),
+            owner: Some(1),
+            importance: 1.0,
+            frequency: 1,
+            components: vec![ComponentState::encode(
+                NET_ID_PREDICTION_ACK,
+                tick,
+                ReplicationMode::OwnerOnly,
+                &NetPredictionAckComponent {
+                    last_processed_input: ack,
+                },
+            )],
+        }
+    }
+
+    #[test]
+    fn authoritative_ack_replays_only_unconfirmed_inputs() {
+        let server_entity = Entity::new(10, 0);
+        let mut client = ClientRuntime::new();
+        client.apply_snapshot(&Snapshot {
+            tick: 1,
+            entities: vec![authoritative_state(server_entity, 1, 0.0, 0)],
+        });
+        client.enqueue_input(1, Vec2::new(1.0, 0.0));
+        client.enqueue_input(2, Vec2::new(1.0, 0.0));
+
+        client.apply_delta(&Delta {
+            tick: 2,
+            baseline: 1,
+            spawns: Vec::new(),
+            updates: vec![authoritative_state(server_entity, 2, 5.0, 1)],
+            despawns: Vec::new(),
+        });
+
+        assert_eq!(client.input_queue.len(), 1);
+        assert_eq!(client.input_queue.front().unwrap().0, 2);
+        assert!((client.predicted_position.x - (5.0 + 250.0 / 30.0)).abs() < 0.001);
+    }
+}

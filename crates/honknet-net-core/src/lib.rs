@@ -132,6 +132,148 @@ impl NetworkMessage for ClientInputPayload {
     const ID: u16 = 102;
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum GameAction {
+    Interact {
+        target: honknet_core::Entity,
+    },
+    Attack {
+        target: honknet_core::Entity,
+    },
+    Pickup {
+        target: honknet_core::Entity,
+    },
+    Bandage {
+        target: honknet_core::Entity,
+    },
+    Treat {
+        target: honknet_core::Entity,
+        treatment: MedicalTreatment,
+    },
+    Cpr {
+        target: honknet_core::Entity,
+    },
+    Surgery {
+        target: honknet_core::Entity,
+        zone: BodyZoneId,
+    },
+    Grab {
+        target: honknet_core::Entity,
+    },
+    ReleaseGrab,
+    Pull {
+        target: honknet_core::Entity,
+    },
+    StopPulling,
+    Carry {
+        target: honknet_core::Entity,
+    },
+    DropCarried,
+    Buckle {
+        fixture: honknet_core::Entity,
+    },
+    Unbuckle,
+    Equip {
+        slot: EquipmentSlotId,
+    },
+    Unequip {
+        slot: EquipmentSlotId,
+    },
+    Store {
+        container: honknet_core::Entity,
+    },
+    Drop,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum EquipmentSlotId {
+    Head,
+    Mask,
+    Jumpsuit,
+    OuterClothing,
+    Gloves,
+    Shoes,
+    Belt,
+    PocketLeft,
+    PocketRight,
+    IdCard,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum MedicalTreatment {
+    Bandage,
+    BruisePack,
+    BurnGel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum BodyZoneId {
+    Head,
+    Chest,
+    Groin,
+    LeftArm,
+    RightArm,
+    LeftLeg,
+    RightLeg,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GameActionRequestPayload {
+    pub sequence: u32,
+    pub action: GameAction,
+}
+
+impl NetworkMessage for GameActionRequestPayload {
+    const ID: u16 = 104;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum GameActionStatus {
+    Success,
+    Cancelled,
+    Denied,
+    InvalidTarget,
+    OutOfRange,
+    Cooldown,
+    Duplicate,
+    QueueFull,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GameActionResultPayload {
+    pub sequence: u32,
+    pub status: GameActionStatus,
+    pub server_tick: u64,
+}
+
+impl NetworkMessage for GameActionResultPayload {
+    const ID: u16 = 105;
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LobbyReadyPayload {
+    pub ready: bool,
+    pub preferred_jobs: Vec<String>,
+}
+
+impl NetworkMessage for LobbyReadyPayload {
+    const ID: u16 = 106;
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct LobbyStatePayload {
+    pub phase: String,
+    pub round_id: u64,
+    pub ready_players: u32,
+    pub connected_players: u32,
+    pub countdown_ticks_remaining: u64,
+    pub assigned_job: Option<String>,
+}
+
+impl NetworkMessage for LobbyStatePayload {
+    const ID: u16 = 107;
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StateAckPayload {
     pub acked_tick: u64,

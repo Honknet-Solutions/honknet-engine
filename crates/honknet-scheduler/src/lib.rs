@@ -1,7 +1,7 @@
 use honknet_ecs::{CommandBuffer, World};
 use rayon::prelude::*;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     time::{Duration, Instant},
 };
 use thiserror::Error;
@@ -22,6 +22,110 @@ pub enum Phase {
     Persistence,
     Frame,
     Shutdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TimerId(u64);
+
+impl TimerId {
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+
+    pub fn from_u64(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TimerEntry<T> {
+    id: TimerId,
+    sequence: u64,
+    repeat_interval: Option<u64>,
+    payload: T,
+}
+
+#[derive(Debug, Clone)]
+pub struct TickTimerQueue<T> {
+    next_id: u64,
+    next_sequence: u64,
+    entries: BTreeMap<u64, Vec<TimerEntry<T>>>,
+}
+
+impl<T> Default for TickTimerQueue<T> {
+    fn default() -> Self {
+        Self {
+            next_id: 1,
+            next_sequence: 0,
+            entries: BTreeMap::new(),
+        }
+    }
+}
+
+impl<T: Clone> TickTimerQueue<T> {
+    pub fn schedule_at(&mut self, due_tick: u64, payload: T) -> TimerId {
+        self.schedule(due_tick, None, payload)
+    }
+
+    pub fn schedule_repeating(
+        &mut self,
+        first_tick: u64,
+        interval_ticks: u64,
+        payload: T,
+    ) -> TimerId {
+        self.schedule(first_tick, Some(interval_ticks.max(1)), payload)
+    }
+
+    fn schedule(&mut self, due_tick: u64, repeat_interval: Option<u64>, payload: T) -> TimerId {
+        let id = TimerId(self.next_id);
+        self.next_id = self.next_id.wrapping_add(1).max(1);
+        let sequence = self.next_sequence;
+        self.next_sequence = self.next_sequence.wrapping_add(1);
+        self.entries.entry(due_tick).or_default().push(TimerEntry {
+            id,
+            sequence,
+            repeat_interval,
+            payload,
+        });
+        id
+    }
+
+    pub fn cancel(&mut self, id: TimerId) -> bool {
+        let mut removed = false;
+        self.entries.retain(|_, entries| {
+            let before = entries.len();
+            entries.retain(|entry| entry.id != id);
+            removed |= entries.len() != before;
+            !entries.is_empty()
+        });
+        removed
+    }
+
+    pub fn advance(&mut self, current_tick: u64) -> Vec<(TimerId, T)> {
+        let future = self.entries.split_off(&current_tick.saturating_add(1));
+        let due = std::mem::replace(&mut self.entries, future);
+        let mut entries: Vec<(u64, TimerEntry<T>)> = due
+            .into_iter()
+            .flat_map(|(tick, entries)| entries.into_iter().map(move |entry| (tick, entry)))
+            .collect();
+        entries.sort_by_key(|(tick, entry)| (*tick, entry.sequence));
+
+        let mut callbacks = Vec::with_capacity(entries.len());
+        for (tick, entry) in entries {
+            callbacks.push((entry.id, entry.payload.clone()));
+            if let Some(interval) = entry.repeat_interval {
+                self.entries
+                    .entry(tick.saturating_add(interval))
+                    .or_default()
+                    .push(entry);
+            }
+        }
+        callbacks
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -256,4 +360,28 @@ pub fn run_prepared_parallel(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timers_are_deterministic_cancellable_and_repeatable() {
+        let mut timers = TickTimerQueue::default();
+        let cancelled = timers.schedule_at(2, "cancelled");
+        timers.schedule_at(2, "second");
+        timers.schedule_at(1, "first");
+        let repeating = timers.schedule_repeating(1, 2, "repeat");
+        assert!(timers.cancel(cancelled));
+
+        assert_eq!(
+            timers.advance(1),
+            vec![(TimerId(3), "first"), (repeating, "repeat")]
+        );
+        assert_eq!(timers.advance(2), vec![(TimerId(2), "second")]);
+        assert_eq!(timers.advance(3), vec![(repeating, "repeat")]);
+        assert!(timers.cancel(repeating));
+        assert!(timers.is_empty());
+    }
 }

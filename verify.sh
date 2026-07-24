@@ -9,6 +9,8 @@ cargo build --workspace --release
 if command -v npm >/dev/null 2>&1; then
   npm install
   npm run typecheck
+  npm run build:game-scripts
+  git diff --exit-code -- game/scripts/dist/game.js
   npm run build:studio
   npm run build:web
 fi

@@ -7,5 +7,7 @@ cargo test --workspace --all-features
 cargo build --workspace --release
 npm install
 npm run typecheck
+npm run build:game-scripts
+git diff --exit-code -- game/scripts/dist/game.js
 npm run build:studio
 npm run build:web

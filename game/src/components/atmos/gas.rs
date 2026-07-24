@@ -33,4 +33,34 @@ impl GasMix {
         }
         (self.total_moles() * 8.314 * self.temperature) / volume
     }
+
+    pub fn remove_fraction(&mut self, fraction: f32) -> GasMix {
+        let fraction = fraction.clamp(0.0, 1.0);
+        let removed = GasMix {
+            oxygen: self.oxygen * fraction,
+            nitrogen: self.nitrogen * fraction,
+            carbon_dioxide: self.carbon_dioxide * fraction,
+            plasma: self.plasma * fraction,
+            temperature: self.temperature,
+        };
+        self.oxygen -= removed.oxygen;
+        self.nitrogen -= removed.nitrogen;
+        self.carbon_dioxide -= removed.carbon_dioxide;
+        self.plasma -= removed.plasma;
+        removed
+    }
+
+    pub fn merge(&mut self, incoming: GasMix) {
+        let existing_moles = self.total_moles();
+        let incoming_moles = incoming.total_moles();
+        let total = existing_moles + incoming_moles;
+        if total > 0.0 {
+            self.temperature =
+                (self.temperature * existing_moles + incoming.temperature * incoming_moles) / total;
+        }
+        self.oxygen += incoming.oxygen;
+        self.nitrogen += incoming.nitrogen;
+        self.carbon_dioxide += incoming.carbon_dioxide;
+        self.plasma += incoming.plasma;
+    }
 }

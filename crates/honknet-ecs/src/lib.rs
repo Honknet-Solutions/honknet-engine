@@ -1,8 +1,9 @@
 use honknet_core::Entity;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::{
     any::{Any, TypeId},
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
 use thiserror::Error;
@@ -38,6 +39,53 @@ pub enum EcsError {
     Stale(Entity),
     #[error("component already exists")]
     Duplicate,
+    #[error("invalid dynamic identifier: {0}")]
+    InvalidDynamicId(String),
+    #[error("dynamic component is not registered: {0}")]
+    UnregisteredDynamicComponent(String),
+    #[error("relation kind is not registered: {0}")]
+    UnregisteredRelation(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DynamicId(String);
+
+impl DynamicId {
+    pub fn new(value: impl Into<String>) -> Result<Self, EcsError> {
+        let value = value.into();
+        let valid = !value.is_empty()
+            && value.len() <= 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+            && value
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphabetic);
+        if valid {
+            Ok(Self(value))
+        } else {
+            Err(EcsError::InvalidDynamicId(value))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DynamicComponentState {
+    pub value: serde_json::Value,
+    pub changed_tick: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntityRelation {
+    pub kind: DynamicId,
+    pub source: Entity,
+    pub target: Entity,
 }
 
 #[derive(Default)]
@@ -231,6 +279,10 @@ pub struct World {
     lifecycle: HashMap<Entity, Lifecycle>,
     storages: HashMap<TypeId, Box<dyn ErasedStorage>>,
     kinds: HashMap<TypeId, StorageKind>,
+    dynamic_component_types: HashSet<DynamicId>,
+    dynamic_components: HashMap<DynamicId, HashMap<Entity, DynamicComponentState>>,
+    relation_types: HashSet<DynamicId>,
+    relations: HashMap<DynamicId, HashMap<Entity, HashSet<Entity>>>,
     tick: u64,
     pub resources: Resources,
 }
@@ -258,8 +310,155 @@ impl World {
         for s in self.storages.values_mut() {
             s.remove(e)
         }
+        for components in self.dynamic_components.values_mut() {
+            components.remove(&e);
+        }
+        for relations in self.relations.values_mut() {
+            relations.remove(&e);
+            for targets in relations.values_mut() {
+                targets.remove(&e);
+            }
+        }
         self.lifecycle.insert(e, Lifecycle::Removed);
         Ok(())
+    }
+    pub fn register_dynamic_component(&mut self, id: DynamicId) -> bool {
+        self.dynamic_components.entry(id.clone()).or_default();
+        self.dynamic_component_types.insert(id)
+    }
+    pub fn set_dynamic_component(
+        &mut self,
+        entity: Entity,
+        id: &DynamicId,
+        value: serde_json::Value,
+    ) -> Result<(), EcsError> {
+        if !self.is_alive(entity) {
+            return Err(EcsError::Stale(entity));
+        }
+        if !self.dynamic_component_types.contains(id) {
+            return Err(EcsError::UnregisteredDynamicComponent(
+                id.as_str().to_string(),
+            ));
+        }
+        self.dynamic_components
+            .get_mut(id)
+            .expect("registered dynamic component storage")
+            .insert(
+                entity,
+                DynamicComponentState {
+                    value,
+                    changed_tick: self.tick,
+                },
+            );
+        Ok(())
+    }
+    pub fn dynamic_component(
+        &self,
+        entity: Entity,
+        id: &DynamicId,
+    ) -> Option<&DynamicComponentState> {
+        self.dynamic_components.get(id)?.get(&entity)
+    }
+    pub fn remove_dynamic_component(
+        &mut self,
+        entity: Entity,
+        id: &DynamicId,
+    ) -> Result<bool, EcsError> {
+        if !self.dynamic_component_types.contains(id) {
+            return Err(EcsError::UnregisteredDynamicComponent(
+                id.as_str().to_string(),
+            ));
+        }
+        Ok(self
+            .dynamic_components
+            .get_mut(id)
+            .and_then(|components| components.remove(&entity))
+            .is_some())
+    }
+    pub fn dynamic_entity_snapshot(&self, entity: Entity) -> BTreeMap<String, serde_json::Value> {
+        self.dynamic_components
+            .iter()
+            .filter_map(|(id, components)| {
+                components
+                    .get(&entity)
+                    .map(|state| (id.as_str().to_string(), state.value.clone()))
+            })
+            .collect()
+    }
+    pub fn register_relation(&mut self, kind: DynamicId) -> bool {
+        self.relations.entry(kind.clone()).or_default();
+        self.relation_types.insert(kind)
+    }
+    pub fn add_relation(
+        &mut self,
+        kind: &DynamicId,
+        source: Entity,
+        target: Entity,
+    ) -> Result<bool, EcsError> {
+        if !self.relation_types.contains(kind) {
+            return Err(EcsError::UnregisteredRelation(kind.as_str().to_string()));
+        }
+        if !self.is_alive(source) {
+            return Err(EcsError::Stale(source));
+        }
+        if !self.is_alive(target) {
+            return Err(EcsError::Stale(target));
+        }
+        Ok(self
+            .relations
+            .get_mut(kind)
+            .expect("registered relation storage")
+            .entry(source)
+            .or_default()
+            .insert(target))
+    }
+    pub fn remove_relation(
+        &mut self,
+        kind: &DynamicId,
+        source: Entity,
+        target: Entity,
+    ) -> Result<bool, EcsError> {
+        if !self.relation_types.contains(kind) {
+            return Err(EcsError::UnregisteredRelation(kind.as_str().to_string()));
+        }
+        Ok(self
+            .relations
+            .get_mut(kind)
+            .and_then(|sources| sources.get_mut(&source))
+            .is_some_and(|targets| targets.remove(&target)))
+    }
+    pub fn relation_targets(&self, kind: &DynamicId, source: Entity) -> Vec<Entity> {
+        let mut targets: Vec<_> = self
+            .relations
+            .get(kind)
+            .and_then(|sources| sources.get(&source))
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|entity| self.is_alive(*entity))
+            .collect();
+        targets.sort_unstable();
+        targets
+    }
+    pub fn relation_snapshot(&self) -> Vec<EntityRelation> {
+        let mut relations = Vec::new();
+        for (kind, sources) in &self.relations {
+            for (source, targets) in sources {
+                for target in targets {
+                    if self.is_alive(*source) && self.is_alive(*target) {
+                        relations.push(EntityRelation {
+                            kind: kind.clone(),
+                            source: *source,
+                            target: *target,
+                        });
+                    }
+                }
+            }
+        }
+        relations.sort_by(|left, right| {
+            (&left.kind, left.source, left.target).cmp(&(&right.kind, right.source, right.target))
+        });
+        relations
     }
     pub fn register<T: Component>(&mut self, kind: StorageKind) {
         self.kinds.insert(TypeId::of::<T>(), kind);
@@ -421,6 +620,7 @@ pub enum Command {
     Spawn(Vec<Box<dyn FnOnce(&mut World, Entity) + Send>>),
     Despawn(Entity),
     Run(Box<dyn FnOnce(&mut World) + Send>),
+    TryRun(Box<dyn FnOnce(&mut World) -> Result<(), EcsError> + Send>),
 }
 
 #[derive(Default)]
@@ -438,6 +638,12 @@ impl CommandBuffer {
     pub fn run<F: FnOnce(&mut World) + Send + 'static>(&mut self, f: F) {
         self.commands.push(Command::Run(Box::new(f)))
     }
+    pub fn try_run<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut World) -> Result<(), EcsError> + Send + 'static,
+    {
+        self.commands.push(Command::TryRun(Box::new(f)))
+    }
     pub fn apply(mut self, world: &mut World) -> Result<(), EcsError> {
         for c in self.commands.drain(..) {
             match c {
@@ -450,6 +656,7 @@ impl CommandBuffer {
                 }
                 Command::Despawn(e) => world.despawn(e)?,
                 Command::Run(f) => f(world),
+                Command::TryRun(f) => f(world)?,
             }
         }
         Ok(())
@@ -511,5 +718,56 @@ mod tests {
         });
         assert_eq!(count, 2);
         assert_eq!(sum, 30);
+    }
+
+    #[test]
+    fn dynamic_components_require_stable_registration() {
+        let mut world = World::default();
+        let entity = world.spawn();
+        let health = DynamicId::new("game.health").unwrap();
+
+        assert!(matches!(
+            world.set_dynamic_component(entity, &health, serde_json::json!({ "blood": 100 })),
+            Err(EcsError::UnregisteredDynamicComponent(_))
+        ));
+        assert!(world.register_dynamic_component(health.clone()));
+        world
+            .set_dynamic_component(entity, &health, serde_json::json!({ "blood": 100 }))
+            .unwrap();
+
+        assert_eq!(
+            world.dynamic_component(entity, &health).unwrap().value,
+            serde_json::json!({ "blood": 100 })
+        );
+    }
+
+    #[test]
+    fn despawn_cleans_dynamic_components_and_relations() {
+        let mut world = World::default();
+        let parent = world.spawn();
+        let child = world.spawn();
+        let body_part = DynamicId::new("game.bodyPart").unwrap();
+        let attached_to = DynamicId::new("game.attachedTo").unwrap();
+        world.register_dynamic_component(body_part.clone());
+        world.register_relation(attached_to.clone());
+        world
+            .set_dynamic_component(child, &body_part, serde_json::json!({ "zone": "arm" }))
+            .unwrap();
+        world.add_relation(&attached_to, child, parent).unwrap();
+
+        world.despawn(parent).unwrap();
+
+        assert!(world.relation_targets(&attached_to, child).is_empty());
+        assert!(world.dynamic_component(child, &body_part).is_some());
+        world.despawn(child).unwrap();
+        assert!(world.dynamic_component(child, &body_part).is_none());
+    }
+
+    #[test]
+    fn dynamic_identifiers_reject_unsafe_names() {
+        assert!(DynamicId::new("game.health").is_ok());
+        assert!(DynamicId::new("../filesystem").is_err());
+        assert!(DynamicId::new("").is_err());
+        assert!(DynamicId::new("9component").is_err());
     }
 }

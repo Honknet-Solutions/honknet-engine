@@ -18,3 +18,22 @@ impl Default for ReagentHolderComponent {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetabolismComponent {
+    pub rate: f32,
+    pub toxin_load: f32,
+    pub stabilization: f32,
+}
+
+impl Component for MetabolismComponent {}
+
+impl Default for MetabolismComponent {
+    fn default() -> Self {
+        Self {
+            rate: 0.5,
+            toxin_load: 0.0,
+            stabilization: 0.0,
+        }
+    }
+}

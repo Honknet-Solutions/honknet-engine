@@ -89,6 +89,27 @@ export class WasmClientRuntime {
         }
     }
     /**
+     * @param {number} sequence
+     * @param {string} action
+     * @param {bigint} entity_uid
+     * @returns {Uint8Array}
+     */
+    create_action_payload(sequence, action, entity_uid) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            const ptr0 = passStringToWasm0(action, wasm.__wbindgen_export2, wasm.__wbindgen_export3);
+            const len0 = WASM_VECTOR_LEN;
+            wasm.wasmclientruntime_create_action_payload(retptr, this.__wbg_ptr, sequence, ptr0, len0, entity_uid);
+            var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+            var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+            var v2 = getArrayU8FromWasm0(r0, r1).slice();
+            wasm.__wbindgen_export(r0, r1 * 1, 1);
+            return v2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
      * @returns {Uint8Array}
      */
     create_hello_payload() {
@@ -129,6 +150,13 @@ export class WasmClientRuntime {
     /**
      * @returns {any}
      */
+    drain_action_results() {
+        const ret = wasm.wasmclientruntime_drain_action_results(this.__wbg_ptr);
+        return takeObject(ret);
+    }
+    /**
+     * @returns {any}
+     */
     extract_render_frame() {
         const ret = wasm.wasmclientruntime_extract_render_frame(this.__wbg_ptr);
         return takeObject(ret);
@@ -158,6 +186,13 @@ export class WasmClientRuntime {
             wasm.__wbindgen_add_to_stack_pointer(16);
             wasm.__wbindgen_export(deferred1_0, deferred1_1, 1);
         }
+    }
+    /**
+     * @returns {any}
+     */
+    get_hud_state() {
+        const ret = wasm.wasmclientruntime_get_hud_state(this.__wbg_ptr);
+        return takeObject(ret);
     }
     initialize_client() {
         try {

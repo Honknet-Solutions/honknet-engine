@@ -1,5 +1,5 @@
 use crate::components::hands::{HandsComponent, ItemComponent};
-use crate::components::inventory::{EquipmentSlot, InventoryComponent};
+use crate::components::inventory::{EquipmentSlot, InventoryComponent, WearableComponent};
 use honknet_core::Entity;
 use honknet_ecs::World;
 use tracing::info;
@@ -12,6 +12,15 @@ pub fn equip_item(world: &mut World, user: Entity, slot: EquipmentSlot) -> bool 
     };
 
     if let Some(item) = item_in_hand {
+        let compatible = world
+            .get::<WearableComponent>(item)
+            .is_some_and(|wearable| wearable.allowed_slots.contains(&slot));
+        if !compatible {
+            if let Some(hands) = world.get_mut::<HandsComponent>(user) {
+                hands.item_in_hand = Some(item);
+            }
+            return false;
+        }
         if let Some(inv) = world.get_mut::<InventoryComponent>(user) {
             if inv.slots.get(&slot) == Some(&None) {
                 inv.slots.insert(slot, Some(item));

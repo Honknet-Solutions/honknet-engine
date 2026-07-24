@@ -1,6 +1,6 @@
 export interface RenderSprite {
     render_id: number;
-    entity_id: number;
+    entity_id: number | bigint;
     asset_id: number;
     state_id: number;
     frame_id: number;
@@ -14,6 +14,40 @@ export interface RenderSprite {
     color: number;
     alpha: number;
     flags: number;
+}
+
+export interface GameActionResult {
+    sequence: number;
+    status: string;
+    server_tick: number | bigint;
+}
+
+export interface OwnerHudState {
+    mob_state?: string;
+    hands?: { active_hand: number; held_item?: unknown; maximum_hands: number };
+    equipment?: { slots: Array<[string, unknown]> };
+    medical?: {
+        blood_fraction: number;
+        oxygen_saturation: number;
+        pain: number;
+        shock: number;
+        conscious: boolean;
+    };
+    interaction?: {
+        grab_strength?: string;
+        action_kind?: string;
+        action_started_tick?: number;
+        action_completes_tick?: number;
+    };
+}
+
+export interface LobbyState {
+    phase: string;
+    round_id: number | bigint;
+    ready_players: number;
+    connected_players: number;
+    countdown_ticks_remaining: number | bigint;
+    assigned_job?: string;
 }
 
 export interface RenderCamera {
@@ -85,6 +119,42 @@ export class WasmBridge {
     public createAckPayload(ackedTick: number): Uint8Array | null {
         if (!this.runtime || typeof this.runtime.create_ack_payload !== 'function') return null;
         return this.runtime.create_ack_payload(BigInt(ackedTick));
+    }
+
+    public createLobbyReadyPayload(ready: boolean, preferredJob: string): Uint8Array | null {
+        if (!this.runtime || typeof this.runtime.create_lobby_ready_payload !== 'function') return null;
+        return this.runtime.create_lobby_ready_payload(ready, preferredJob);
+    }
+
+    public getLobbyState(): LobbyState | null {
+        if (!this.runtime || typeof this.runtime.get_lobby_state !== 'function') return null;
+        return this.runtime.get_lobby_state() as LobbyState | null;
+    }
+
+    public createActionPayload(
+        sequence: number,
+        action:
+            | 'interact' | 'attack' | 'pickup'
+            | 'bandage' | 'bruise' | 'burn' | 'cpr'
+            | 'surgeryChest'
+            | 'grab' | 'releaseGrab' | 'pull' | 'stopPulling'
+            | 'carry' | 'dropCarried'
+            | 'buckle' | 'unbuckle'
+            | 'equipJumpsuit' | 'unequipJumpsuit' | 'store' | 'drop',
+        entityId: number | bigint = 0,
+    ): Uint8Array | null {
+        if (!this.runtime || typeof this.runtime.create_action_payload !== 'function') return null;
+        return this.runtime.create_action_payload(sequence, action, BigInt(entityId));
+    }
+
+    public drainActionResults(): GameActionResult[] {
+        if (!this.runtime || typeof this.runtime.drain_action_results !== 'function') return [];
+        return this.runtime.drain_action_results() as GameActionResult[];
+    }
+
+    public getHudState(): OwnerHudState {
+        if (!this.runtime || typeof this.runtime.get_hud_state !== 'function') return {};
+        return this.runtime.get_hud_state() as OwnerHudState;
     }
 
     public getDiagnostics(): string {

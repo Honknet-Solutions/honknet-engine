@@ -1,17 +1,17 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use futures_util::{SinkExt, StreamExt};
 use honknet_game::GameApplication;
 use honknet_math::Vec2;
 use honknet_net_core::{
     decode_message, encode_message_envelope, ClientHelloPayload, ClientInputPayload,
-    NetworkMessage, NetworkPacketEnvelope, ServerWelcomePayload, StateAckPayload, BUILD_VERSION,
+    GameActionRequestPayload, LobbyReadyPayload, LobbyStatePayload, NetworkMessage,
+    NetworkPacketEnvelope, ServerWelcomePayload, StateAckPayload, BUILD_VERSION,
     CONTENT_MANIFEST_ID, CONTENT_VERSION, PROTOCOL_VERSION,
 };
 use honknet_net_server::WsServer;
-use honknet_replication::{EntityState, Snapshot};
 use honknet_runtime::{EngineRuntimeConfig, PlayerPeer, VelocityComponent};
-use std::{net::SocketAddr, sync::Arc, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tracing::info;
@@ -22,6 +22,12 @@ struct Args {
     listen: SocketAddr,
     #[arg(long, default_value_t = 30)]
     tick_rate: u32,
+    #[arg(long, default_value = "127.0.0.1:3016")]
+    observability_listen: SocketAddr,
+    #[arg(long, default_value = "data")]
+    data_directory: PathBuf,
+    #[arg(long)]
+    admin_listen: Option<SocketAddr>,
 }
 
 #[tokio::main]
@@ -39,24 +45,64 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| "honknet-session-key-dev".to_string());
     let reconnect_key = std::env::var("HONKNET_RECONNECT_KEY")
         .unwrap_or_else(|_| "honknet-reconnect-key-dev".to_string());
+    std::fs::create_dir_all(&args.data_directory)?;
+    let replay_path = args.data_directory.join("current-round.hnrp");
 
     let runtime = GameApplication::new(EngineRuntimeConfig {
         tick_rate: args.tick_rate,
         listen_address: args.listen.to_string(),
-        persistence_path: None,
-        replay_path: None,
+        persistence_path: Some(args.data_directory.join("persistence")),
+        replay_path: Some(replay_path),
         auth_signing_key: auth_key.into_bytes(),
         session_key: session_key.into_bytes(),
         reconnect_key: reconnect_key.into_bytes(),
     })?
-    .initialize()?
-    .into_runtime();
+    .initialize()?;
+
+    let metrics = runtime.metrics.clone();
+    let health = runtime.health.clone();
+    let observability_address = args.observability_listen.to_string();
+    tokio::spawn(async move {
+        if let Err(error) =
+            honknet_observability::serve_http(&observability_address, metrics, health).await
+        {
+            tracing::error!("Observability endpoint stopped: {error}");
+        }
+    });
 
     let ws_server = Arc::new(Mutex::new(WsServer::new()));
     let listener = TcpListener::bind(args.listen).await?;
     info!("Honknet WebSocket Server listening on {}", args.listen);
 
     let runtime = Arc::new(Mutex::new(runtime));
+    let (admin_tx, mut admin_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    {
+        let console = runtime.lock().await.admin.clone();
+        let end_tx = admin_tx.clone();
+        console.register(
+            "end-round",
+            "round.end",
+            "end-round <reason>",
+            move |_context, arguments| {
+                let reason = arguments.join(" ");
+                end_tx
+                    .send(reason.clone())
+                    .map_err(|error| honknet_admin::AdminError::Failed(error.to_string()))?;
+                Ok(serde_json::json!({ "queued": true, "reason": reason }))
+            },
+        );
+        if let Some(address) = args.admin_listen {
+            let token = std::env::var("HONKNET_ADMIN_TOKEN")
+                .context("--admin-listen requires HONKNET_ADMIN_TOKEN")?;
+            tokio::spawn(async move {
+                if let Err(error) =
+                    honknet_admin::serve_remote(console, &address.to_string(), token.into()).await
+                {
+                    tracing::error!("Admin endpoint stopped: {error}");
+                }
+            });
+        }
+    }
     let peer_counter = Arc::new(Mutex::new(1000u64));
 
     let ws_server_clone = Arc::clone(&ws_server);
@@ -188,13 +234,27 @@ async fn main() -> Result<()> {
                                         ) {
                                             let mut r = runtime_reader.lock().await;
                                             if let Some(&e) = r.players.get(&peer_id) {
-                                                let speed = 250.0;
-                                                let target_vel =
-                                                    if input.movement.length_squared() > 0.0 {
-                                                        input.movement.normalized() * speed
-                                                    } else {
-                                                        Vec2::ZERO
-                                                    };
+                                                r.record_client_input(peer_id, payload.to_vec());
+                                                r.acknowledge_input(peer_id, input.sequence);
+                                                let speed = if r
+                                                    .world
+                                                    .contains::<honknet_game::components::CarryingComponent>(e)
+                                                {
+                                                    125.0
+                                                } else {
+                                                    250.0
+                                                };
+                                                let movement_allowed = r
+                                                    .world
+                                                    .get::<honknet_game::components::BuckledComponent>(e)
+                                                    .is_none_or(|state| state.fixture.is_none());
+                                                let target_vel = if !movement_allowed {
+                                                    Vec2::ZERO
+                                                } else if input.movement.length_squared() > 0.0 {
+                                                    input.movement.normalized() * speed
+                                                } else {
+                                                    Vec2::ZERO
+                                                };
 
                                                 if let Some(v) =
                                                     r.world.get_mut::<VelocityComponent>(e)
@@ -205,6 +265,28 @@ async fn main() -> Result<()> {
                                                     b.velocity = target_vel;
                                                 }
                                             }
+                                        }
+                                    }
+                                    LobbyReadyPayload::ID => {
+                                        if let Ok(ready) = decode_message::<LobbyReadyPayload>(
+                                            payload, compressed, 4096,
+                                        ) {
+                                            let mut r = runtime_reader.lock().await;
+                                            r.set_lobby_ready(
+                                                peer_id,
+                                                ready.ready,
+                                                ready.preferred_jobs,
+                                            );
+                                        }
+                                    }
+                                    GameActionRequestPayload::ID => {
+                                        if let Ok(action) = decode_message::<GameActionRequestPayload>(
+                                            payload, compressed, 4096,
+                                        ) {
+                                            runtime_reader
+                                                .lock()
+                                                .await
+                                                .enqueue_action(peer_id, action);
                                         }
                                     }
                                     StateAckPayload::ID => {
@@ -238,87 +320,43 @@ async fn main() -> Result<()> {
             _ = tokio::signal::ctrl_c() => break,
             _ = interval.tick() => {
                 let mut r = runtime.lock().await;
+                while let Ok(reason) = admin_rx.try_recv() {
+                    r.request_round_end(reason);
+                }
                 r.tick(dt as f32)?;
 
                 let mut ws_srv = ws_server.lock().await;
-
-                // Replicate snapshot across connected peers
-                let mut entities_state = Vec::new();
-                for (&peer, &e) in &r.players {
-                    let pos = if let Some(b) = r.physics.bodies.get(&e) {
-                        b.position
-                    } else {
-                        Vec2::ZERO
-                    };
-                    let vel = if let Some(b) = r.physics.bodies.get(&e) {
-                        b.velocity
-                    } else {
-                        Vec2::ZERO
-                    };
-
-                    let transform_comp = honknet_replication::ComponentState::encode(
-                        honknet_replication::NET_ID_TRANSFORM,
-                        r.world.tick(),
-                        honknet_replication::ReplicationMode::Replicated,
-                        &honknet_replication::NetTransformComponent {
-                            position: pos,
-                            rotation: 0.0,
-                            parent_entity: None,
-                        },
-                    );
-
-                    let physics_comp = honknet_replication::ComponentState::encode(
-                        honknet_replication::NET_ID_PHYSICS,
-                        r.world.tick(),
-                        honknet_replication::ReplicationMode::Replicated,
-                        &honknet_replication::NetPhysicsComponent {
-                            velocity: vel,
-                            angular_velocity: 0.0,
-                            mass: 70.0,
-                            body_type: 1,
-                        },
-                    );
-
-                    let meta_comp = honknet_replication::ComponentState::encode(
-                        honknet_replication::NET_ID_METADATA,
-                        r.world.tick(),
-                        honknet_replication::ReplicationMode::Replicated,
-                        &honknet_replication::NetMetadataComponent {
-                            name: format!("Player-{peer}"),
-                            description: "Human Engineer".to_string(),
-                            prototype_id: "MobHuman".to_string(),
-                        },
-                    );
-
-                    let sprite_comp = honknet_replication::ComponentState::encode(
-                        honknet_replication::NET_ID_SPRITE,
-                        r.world.tick(),
-                        honknet_replication::ReplicationMode::Replicated,
-                        &honknet_replication::NetSpriteComponent {
-                            rsi_path: "Mobs/Species/Human/human.rsi".to_string(),
-                            state: "human_idle".to_string(),
-                            direction: 0,
-                            layer: 0,
-                            color: 0x00f0ff,
-                            visible: true,
-                        },
-                    );
-
-                    entities_state.push(EntityState {
-                        entity: e,
-                        revision: r.world.tick(),
-                        position: pos,
-                        owner: Some(peer),
-                        importance: 1.0,
-                        frequency: 1,
-                        components: vec![transform_comp, physics_comp, meta_comp, sprite_comp],
-                    });
+                for (peer, result) in r.drain_action_results() {
+                    if let Ok(payload) =
+                        encode_message_envelope(&result, r.world.tick(), false)
+                    {
+                        ws_srv.send_to(peer, payload);
+                    }
                 }
 
-                let snapshot = Snapshot {
-                    tick: r.world.tick(),
-                    entities: entities_state,
+                let round = r.round();
+                let countdown_ticks_remaining = if round.phase == honknet_game::round::RoundPhase::Starting {
+                    round.countdown_ticks.saturating_sub(round.elapsed_ticks)
+                } else {
+                    0
                 };
+                let lobby_peers: Vec<u64> = ws_srv.clients.keys().copied().collect();
+                for peer in lobby_peers {
+                    let state = LobbyStatePayload {
+                        phase: format!("{:?}", round.phase),
+                        round_id: round.round_id,
+                        ready_players: round.ready_count() as u32,
+                        connected_players: round.players.len() as u32,
+                        countdown_ticks_remaining,
+                        assigned_job: round
+                            .players
+                            .get(&peer)
+                            .and_then(|player| player.assigned_job.clone()),
+                    };
+                    if let Ok(payload) = encode_message_envelope(&state, r.world.tick(), false) {
+                        ws_srv.send_to(peer, payload);
+                    }
+                }
 
                 let current_tick = r.world.tick();
                 let peers: Vec<u64> = ws_srv.clients.keys().copied().collect();
@@ -327,10 +365,7 @@ async fn main() -> Result<()> {
                         if let Ok(env_payload) = encode_message_envelope(&delta, current_tick, false) {
                             ws_srv.send_to(peer, env_payload);
                         }
-                    } else if let Ok(env_payload) = encode_message_envelope(&snapshot, current_tick, false) {
-                        ws_srv.send_to(peer, env_payload);
                     }
-                    r.client_baselines.insert(peer, current_tick);
                 }
 
                 ws_srv.update();
@@ -338,5 +373,6 @@ async fn main() -> Result<()> {
         }
     }
 
+    runtime.lock().await.shutdown()?;
     Ok(())
 }

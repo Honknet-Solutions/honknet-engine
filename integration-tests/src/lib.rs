@@ -46,6 +46,9 @@ mod tests {
                 },
             ],
             grids: std::collections::HashMap::new(),
+            areas: std::collections::HashMap::new(),
+            transitions: std::collections::HashMap::new(),
+            docking_ports: std::collections::HashMap::new(),
             metadata: std::collections::HashMap::new(),
             streaming_regions: vec![],
             dirty_chunks: honknet_map::DirtyChunkQueue::default(),
@@ -55,6 +58,9 @@ mod tests {
             honknet_map::Grid {
                 entity: grid_entity,
                 transform: honknet_math::Transform2::IDENTITY,
+                z_level: 0,
+                parent: None,
+                linear_velocity: Vec2::ZERO,
                 chunks: std::collections::HashMap::new(),
                 revision: 0,
             },
@@ -127,8 +133,7 @@ mod tests {
         })
         .unwrap()
         .initialize()
-        .unwrap()
-        .into_runtime();
+        .unwrap();
 
         // 1. First client connects (peer 100)
         let player_entity = runtime.spawn_player(100, Vec2::new(10.0, 20.0)).unwrap();
@@ -153,5 +158,156 @@ mod tests {
             runtime.world.get::<PlayerPeer>(player_entity).unwrap().0,
             101
         );
+    }
+
+    #[test]
+    fn client_action_runs_through_validation_signal_and_ecs() {
+        use honknet_game::{
+            components::{CombatIntent, CombatIntentComponent, HealthComponent},
+            GameApplication,
+        };
+        use honknet_net_core::{GameAction, GameActionRequestPayload, GameActionStatus};
+        use honknet_physics::{Body, Fixture, Shape};
+        use honknet_runtime::EngineRuntimeConfig;
+
+        let mut game = GameApplication::new(EngineRuntimeConfig::default())
+            .unwrap()
+            .initialize()
+            .unwrap();
+        let actor = game.spawn_player(7, Vec2::ZERO).unwrap();
+        game.world
+            .get_mut::<CombatIntentComponent>(actor)
+            .unwrap()
+            .intent = CombatIntent::Harm;
+        let target = game.world.spawn();
+        game.world
+            .insert(
+                target,
+                HealthComponent {
+                    current: 20.0,
+                    max: 20.0,
+                },
+            )
+            .unwrap();
+        game.physics.insert(Body::dynamic(
+            target,
+            Vec2::new(1.0, 0.0),
+            1.0,
+            Fixture {
+                shape: Shape::Circle { radius: 0.35 },
+                friction: 0.5,
+                restitution: 0.0,
+                sensor: false,
+                layer: 1,
+                mask: 1,
+            },
+        ));
+
+        game.enqueue_action(
+            7,
+            GameActionRequestPayload {
+                sequence: 1,
+                action: GameAction::Attack { target },
+            },
+        );
+        game.tick(1.0 / 30.0).unwrap();
+
+        assert_eq!(
+            game.world.get::<HealthComponent>(target).unwrap().current,
+            15.0
+        );
+        assert_eq!(
+            game.drain_action_results()[0].1.status,
+            GameActionStatus::Success
+        );
+
+        game.enqueue_action(
+            7,
+            GameActionRequestPayload {
+                sequence: 1,
+                action: GameAction::Attack { target },
+            },
+        );
+        assert_eq!(
+            game.drain_action_results()[0].1.status,
+            GameActionStatus::Duplicate
+        );
+
+        game.physics.bodies.get_mut(&target).unwrap().position = Vec2::new(50.0, 0.0);
+        game.enqueue_action(
+            7,
+            GameActionRequestPayload {
+                sequence: 2,
+                action: GameAction::Attack { target },
+            },
+        );
+        game.tick(1.0 / 30.0).unwrap();
+        assert_eq!(
+            game.drain_action_results()[0].1.status,
+            GameActionStatus::OutOfRange
+        );
+    }
+
+    #[tokio::test]
+    async fn gameplay_action_round_trips_over_websocket() {
+        use futures_util::{SinkExt, StreamExt};
+        use honknet_game::GameApplication;
+        use honknet_net_core::{
+            decode_message, encode_message_envelope, GameAction, GameActionRequestPayload,
+            GameActionResultPayload, GameActionStatus, NetworkMessage, NetworkPacketEnvelope,
+        };
+        use honknet_runtime::EngineRuntimeConfig;
+        use tokio::net::TcpListener;
+        use tokio_tungstenite::{accept_async, connect_async, tungstenite::Message};
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut game = GameApplication::new(EngineRuntimeConfig::default())
+                .unwrap()
+                .initialize()
+                .unwrap();
+            game.spawn_player(9, Vec2::ZERO).unwrap();
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = accept_async(stream).await.unwrap();
+            let Message::Binary(bytes) = socket.next().await.unwrap().unwrap() else {
+                panic!("expected binary action packet");
+            };
+            let (envelope, payload) = NetworkPacketEnvelope::decode(&bytes).unwrap();
+            assert_eq!(envelope.message_id, GameActionRequestPayload::ID);
+            let request = decode_message::<GameActionRequestPayload>(payload, false, 4096).unwrap();
+            game.enqueue_action(9, request);
+            game.tick(1.0 / 30.0).unwrap();
+            let (_, result) = game.drain_action_results().remove(0);
+            socket
+                .send(Message::Binary(
+                    encode_message_envelope(&result, game.world.tick(), false)
+                        .unwrap()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+        });
+
+        let (mut client, _) = connect_async(format!("ws://{address}")).await.unwrap();
+        let request = GameActionRequestPayload {
+            sequence: 77,
+            action: GameAction::Drop,
+        };
+        client
+            .send(Message::Binary(
+                encode_message_envelope(&request, 0, false).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+        let Message::Binary(bytes) = client.next().await.unwrap().unwrap() else {
+            panic!("expected binary action result");
+        };
+        let (envelope, payload) = NetworkPacketEnvelope::decode(&bytes).unwrap();
+        assert_eq!(envelope.message_id, GameActionResultPayload::ID);
+        let result = decode_message::<GameActionResultPayload>(payload, false, 1024).unwrap();
+        assert_eq!(result.sequence, 77);
+        assert_eq!(result.status, GameActionStatus::Cancelled);
+        server.await.unwrap();
     }
 }

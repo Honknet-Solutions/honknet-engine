@@ -7,6 +7,11 @@ pub enum ToolType {
     Welder,
     Screwdriver,
     Wrench,
+    Scalpel,
+    Hemostat,
+    Retractor,
+    Cautery,
+    SurgicalSaw,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

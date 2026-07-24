@@ -32,7 +32,7 @@ members = [
   "crates/honknet-auth",
   "crates/honknet-admin",
   "crates/honknet-observability",
-  "crates/honknet-wasm",
+  "crates/honknet-script",
   "crates/honknet-testing",
   "crates/honknet-input",
   "crates/honknet-package",
@@ -68,6 +68,7 @@ anyhow = "1.0"
 async-trait = "0.1"
 bincode = { version = "2.0", features = ["serde"] }
 bitflags = { version = "2.6", features = ["serde"] }
+boa_engine = "0.20"
 bytes = "1.9"
 clap = { version = "4.5", features = ["derive"] }
 crc32fast = "1.4"

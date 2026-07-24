@@ -1,0 +1,13 @@
+[package]
+name = "honknet-script"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+boa_engine.workspace = true
+honknet-core = { path = "../honknet-core" }
+honknet-events = { path = "../honknet-events" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

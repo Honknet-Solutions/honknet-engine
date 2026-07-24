@@ -1,8 +1,10 @@
 use honknet_client_runtime::{ClientConnectionState, ClientRuntime};
 use honknet_math::Vec2;
 use honknet_net_core::{
-    decode_message, encode_message_envelope, NetworkMessage, NetworkPacketEnvelope,
-    ServerWelcomePayload, BUILD_VERSION, CONTENT_MANIFEST_ID, CONTENT_VERSION,
+    decode_message, encode_message_envelope, GameAction, GameActionRequestPayload,
+    GameActionResultPayload, LobbyReadyPayload, LobbyStatePayload, NetworkMessage,
+    NetworkPacketEnvelope, ServerWelcomePayload, BUILD_VERSION, CONTENT_MANIFEST_ID,
+    CONTENT_VERSION,
 };
 use honknet_replication::{Delta, Snapshot};
 use wasm_bindgen::prelude::*;
@@ -12,6 +14,8 @@ pub struct WasmClientRuntime {
     runtime: ClientRuntime,
     session_peer_id: u64,
     reconnect_token: Option<String>,
+    action_results: Vec<GameActionResultPayload>,
+    lobby_state: Option<LobbyStatePayload>,
 }
 
 impl Default for WasmClientRuntime {
@@ -29,6 +33,8 @@ impl WasmClientRuntime {
             runtime: ClientRuntime::new(),
             session_peer_id: 0,
             reconnect_token: None,
+            action_results: Vec::new(),
+            lobby_state: None,
         }
     }
 
@@ -76,6 +82,20 @@ impl WasmClientRuntime {
                         self.runtime.set_state(ClientConnectionState::Active);
                     }
                 }
+                GameActionResultPayload::ID => {
+                    if let Ok(result) =
+                        decode_message::<GameActionResultPayload>(payload, compressed, 1024)
+                    {
+                        self.action_results.push(result);
+                    }
+                }
+                LobbyStatePayload::ID => {
+                    if let Ok(state) =
+                        decode_message::<LobbyStatePayload>(payload, compressed, 4096)
+                    {
+                        self.lobby_state = Some(state);
+                    }
+                }
                 _ => {}
             }
         }
@@ -111,6 +131,10 @@ impl WasmClientRuntime {
         serde_wasm_bindgen::to_value(&frame).unwrap_or(JsValue::NULL)
     }
 
+    pub fn get_hud_state(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.runtime.owner_hud_state()).unwrap_or(JsValue::NULL)
+    }
+
     pub fn ack_render_frame(&mut self, tick: u64) {
         self.runtime.last_acked_baseline = tick;
     }
@@ -139,6 +163,73 @@ impl WasmClientRuntime {
     pub fn create_ack_payload(&self, acked_tick: u64) -> Vec<u8> {
         let ack = honknet_net_core::StateAckPayload { acked_tick };
         encode_message_envelope(&ack, self.runtime.client_tick, false).unwrap_or_default()
+    }
+
+    pub fn create_lobby_ready_payload(&self, ready: bool, preferred_job: &str) -> Vec<u8> {
+        encode_message_envelope(
+            &LobbyReadyPayload {
+                ready,
+                preferred_jobs: vec![preferred_job.to_string()],
+            },
+            self.runtime.client_tick,
+            false,
+        )
+        .unwrap_or_default()
+    }
+
+    pub fn get_lobby_state(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.lobby_state).unwrap_or(JsValue::NULL)
+    }
+
+    pub fn create_action_payload(&self, sequence: u32, action: &str, entity_uid: u64) -> Vec<u8> {
+        let target = honknet_core::Entity::new((entity_uid >> 32) as u32, entity_uid as u32);
+        let action = match action {
+            "interact" => GameAction::Interact { target },
+            "attack" => GameAction::Attack { target },
+            "pickup" => GameAction::Pickup { target },
+            "bandage" => GameAction::Bandage { target },
+            "bruise" => GameAction::Treat {
+                target,
+                treatment: honknet_net_core::MedicalTreatment::BruisePack,
+            },
+            "burn" => GameAction::Treat {
+                target,
+                treatment: honknet_net_core::MedicalTreatment::BurnGel,
+            },
+            "cpr" => GameAction::Cpr { target },
+            "surgeryChest" => GameAction::Surgery {
+                target,
+                zone: honknet_net_core::BodyZoneId::Chest,
+            },
+            "grab" => GameAction::Grab { target },
+            "releaseGrab" => GameAction::ReleaseGrab,
+            "pull" => GameAction::Pull { target },
+            "stopPulling" => GameAction::StopPulling,
+            "carry" => GameAction::Carry { target },
+            "dropCarried" => GameAction::DropCarried,
+            "buckle" => GameAction::Buckle { fixture: target },
+            "unbuckle" => GameAction::Unbuckle,
+            "equipJumpsuit" => GameAction::Equip {
+                slot: honknet_net_core::EquipmentSlotId::Jumpsuit,
+            },
+            "unequipJumpsuit" => GameAction::Unequip {
+                slot: honknet_net_core::EquipmentSlotId::Jumpsuit,
+            },
+            "store" => GameAction::Store { container: target },
+            "drop" => GameAction::Drop,
+            _ => return Vec::new(),
+        };
+        encode_message_envelope(
+            &GameActionRequestPayload { sequence, action },
+            self.runtime.client_tick,
+            false,
+        )
+        .unwrap_or_default()
+    }
+
+    pub fn drain_action_results(&mut self) -> JsValue {
+        let results = std::mem::take(&mut self.action_results);
+        serde_wasm_bindgen::to_value(&results).unwrap_or(JsValue::NULL)
     }
 
     pub fn get_client_state(&self) -> u32 {

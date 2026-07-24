@@ -7,7 +7,7 @@ import SceneManager from './render/scene/SceneManager';
 import { CameraController } from './render/camera/CameraController';
 import { CameraTransform } from './render/camera/CameraTransform';
 import { BrowserInputAdapter } from './input/BrowserInputAdapter';
-import { WasmBridge, RenderFrame } from './bridge/WasmBridge';
+import { WasmBridge, RenderFrame, RenderSprite } from './bridge/WasmBridge';
 import { TransportBridge } from './bridge/TransportBridge';
 import { ChunkRenderer } from './render/ChunkRenderer';
 import { RsiSpriteRenderer } from './render/RsiSpriteRenderer';
@@ -129,10 +129,113 @@ async function bootstrap() {
     });
 
     let inputSeq = 1;
+    let actionSeq = 1;
+    let actionMode:
+        | 'interact' | 'attack' | 'pickup'
+        | 'grab' | 'pull' | 'buckle' | 'store' | 'carry' = 'interact';
+    let latestSprites: RenderSprite[] = [];
+    let lastActionStatus = 'ready';
+    let lobbyReady = false;
+    const pendingActions = new Map<number, string>();
     let lastSentMoveX = 0;
     let lastSentMoveY = 0;
     let inputAccumulator = 0;
     const INPUT_TICK_RATE = 1.0 / 30.0; // Fixed 30 TPS Input Rate Limit
+
+    const sendAction = (
+        action:
+            | 'interact' | 'attack' | 'pickup'
+            | 'bandage' | 'bruise' | 'burn' | 'cpr'
+            | 'surgeryChest'
+            | 'grab' | 'releaseGrab' | 'pull' | 'stopPulling'
+            | 'carry' | 'dropCarried'
+            | 'buckle' | 'unbuckle'
+            | 'equipJumpsuit' | 'unequipJumpsuit' | 'store' | 'drop',
+        entityId: number | bigint = 0,
+    ) => {
+        const sequence = actionSeq++;
+        const payload = wasmBridge.createActionPayload(sequence, action, entityId);
+        if (!payload || payload.length === 0) {
+            lastActionStatus = 'client unavailable';
+            return;
+        }
+        pendingActions.set(sequence, action);
+        transportBridge.send(payload);
+        lastActionStatus = `${action} pending`;
+    };
+
+    canvas.addEventListener('click', (event) => {
+        const bounds = canvas.getBoundingClientRect();
+        const screenX = (event.clientX - bounds.left) * (app.screen.width / bounds.width);
+        const screenY = (event.clientY - bounds.top) * (app.screen.height / bounds.height);
+        const world = cameraTransform.screenToWorld(screenX, screenY);
+        let nearest: RenderSprite | null = null;
+        let nearestDistance = 24 / Math.max(cameraTransform.worldRoot.scale.x, 0.001);
+        for (const sprite of latestSprites) {
+            const distance = Math.hypot(sprite.x - world.x, sprite.y - world.y);
+            if (distance <= nearestDistance) {
+                nearest = sprite;
+                nearestDistance = distance;
+            }
+        }
+        if (nearest) {
+            sendAction(event.shiftKey ? 'attack' : actionMode, nearest.entity_id);
+        } else {
+            lastActionStatus = 'no target';
+        }
+    });
+
+    window.addEventListener('keydown', (event) => {
+        if (event.code === 'Enter' && !event.repeat) {
+            lobbyReady = !lobbyReady;
+            const payload = wasmBridge.createLobbyReadyPayload(lobbyReady, 'medical_doctor');
+            if (payload) transportBridge.send(payload);
+        }
+        if (event.code === 'Digit1') actionMode = 'interact';
+        if (event.code === 'Digit2') actionMode = 'attack';
+        if (event.code === 'Digit3') actionMode = 'pickup';
+        if (event.code === 'Digit4') actionMode = 'grab';
+        if (event.code === 'Digit5') actionMode = 'pull';
+        if (event.code === 'Digit6') actionMode = 'buckle';
+        if (event.code === 'Digit7') actionMode = 'store';
+        if (event.code === 'Digit8') actionMode = 'carry';
+        if (event.code === 'KeyQ' && !event.repeat) sendAction('drop');
+        if (event.code === 'KeyE' && !event.repeat) sendAction('equipJumpsuit');
+        if (event.code === 'KeyX' && !event.repeat) sendAction('unequipJumpsuit');
+        if (event.code === 'KeyR' && !event.repeat) sendAction('releaseGrab');
+        if (event.code === 'KeyT' && !event.repeat) sendAction('stopPulling');
+        if (event.code === 'KeyY' && !event.repeat) sendAction('dropCarried');
+        if (event.code === 'KeyU' && !event.repeat) sendAction('unbuckle');
+        if (
+            ['KeyB', 'KeyC', 'KeyV', 'KeyG', 'KeyH'].includes(event.code) &&
+            !event.repeat
+        ) {
+            const bounds = canvas.getBoundingClientRect();
+            const world = cameraTransform.screenToWorld(
+                (inputAdapter.mouse.x - bounds.left) * (app.screen.width / bounds.width),
+                (inputAdapter.mouse.y - bounds.top) * (app.screen.height / bounds.height),
+            );
+            const target = latestSprites
+                .map((sprite) => ({
+                    sprite,
+                    distance: Math.hypot(sprite.x - world.x, sprite.y - world.y),
+                }))
+                .filter((candidate) => candidate.distance <= 24)
+                .sort((left, right) => left.distance - right.distance)[0]?.sprite;
+            if (target) {
+                const medicalAction = {
+                    KeyB: 'bandage',
+                    KeyC: 'cpr',
+                    KeyV: 'bruise',
+                    KeyG: 'burn',
+                    KeyH: 'surgeryChest',
+                }[event.code] as 'bandage' | 'cpr' | 'bruise' | 'burn' | 'surgeryChest';
+                sendAction(medicalAction, target.entity_id);
+            } else {
+                lastActionStatus = 'no medical target';
+            }
+        }
+    });
 
     const loop = new RenderLoop();
     loop.addCallback((delta: number) => {
@@ -191,6 +294,7 @@ async function bootstrap() {
             }
 
             if (frame.sprites) {
+                latestSprites = frame.sprites;
                 const currentRenderIds = new Set<number>();
 
                 for (const sprite of frame.sprites) {
@@ -217,10 +321,30 @@ async function bootstrap() {
             }
     }
 
+        for (const result of wasmBridge.drainActionResults()) {
+            const action = pendingActions.get(result.sequence) ?? 'action';
+            pendingActions.delete(result.sequence);
+            lastActionStatus = `${action}: ${result.status}`;
+        }
+
         // Update HUD Diagnostics
+        const hud = wasmBridge.getHudState();
+        const lobby = wasmBridge.getLobbyState();
+        const medical = hud.medical;
+        const medicalLine = medical
+            ? `State: ${hud.mob_state ?? 'Unknown'} | Blood: ${(medical.blood_fraction * 100).toFixed(0)}% | O₂: ${(medical.oxygen_saturation * 100).toFixed(0)}% | Pain: ${medical.pain.toFixed(0)} | Shock: ${medical.shock.toFixed(0)}`
+            : 'State: synchronizing';
+        const interactionLine = hud.interaction
+            ? `Grab: ${hud.interaction.grab_strength ?? 'none'} | Timed action: ${hud.interaction.action_kind ?? 'none'}`
+            : 'Grab: none | Timed action: none';
         statusText.text = `Backend: WebGPU/WebGL2 | WASM: ${wasmBridge.isLoaded() ? 'Loaded' : 'Standalone'} | Server: ${wsUrl}\n` +
             `Diagnostics: ${wasmBridge.getDiagnostics()}\n` +
-            `Controls: WASD to Move Player (Server Authoritative) | Mouse to Pan/Zoom`;
+            `Round: ${lobby?.phase ?? 'Synchronizing'} #${lobby?.round_id ?? '-'} | Ready: ${lobby?.ready_players ?? 0}/${lobby?.connected_players ?? 0} | Job: ${lobby?.assigned_job ?? 'unassigned'} | Enter toggles ready\n` +
+            `${medicalLine}\n${interactionLine}\n` +
+            `Action: ${actionMode} | Result: ${lastActionStatus} | Pending: ${pendingActions.size}\n` +
+            `Controls: WASD | 1 interact | 2 attack | 3 pickup | 4 grab | 5 pull | 6 buckle | 7 store | 8 carry\n` +
+            `Inventory: E equip jumpsuit | X unequip | Q drop | R release | T stop pull | Y drop carried | U unbuckle\n` +
+            `Medical: B bandage | V bruise pack | G burn gel | C CPR | H surgery step | Q drop`;
 
         cameraTransform.updateScreenSize(app.screen.width, app.screen.height);
         cameraController.update(delta);

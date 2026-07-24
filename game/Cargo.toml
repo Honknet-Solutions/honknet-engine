@@ -20,5 +20,7 @@ honknet-replication = { path = "../crates/honknet-replication" }
 honknet-prototypes = { path = "../crates/honknet-prototypes" }
 honknet-runtime = { path = "../crates/honknet-runtime" }
 honknet-scheduler = { path = "../crates/honknet-scheduler" }
+honknet-script = { path = "../crates/honknet-script" }
 serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true

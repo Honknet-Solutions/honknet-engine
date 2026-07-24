@@ -15,8 +15,8 @@ web-sys = { version = "0.3", features = ["Window","Document","HtmlCanvasElement"
 js-sys = "0.3"
 console_error_panic_hook = "0.1"
 honknet-client-runtime = { path = "../../crates/honknet-client-runtime" }
+honknet-core = { path = "../../crates/honknet-core" }
 honknet-net-core = { path = "../../crates/honknet-net-core" }
 honknet-replication = { path = "../../crates/honknet-replication" }
 honknet-math = { path = "../../crates/honknet-math" }
 getrandom = { version = "0.3", features = ["wasm_js"] }
-

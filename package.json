@@ -4,13 +4,15 @@
   "version": "1.0.0-rc.1",
   "workspaces": [
     "apps/honknet-studio",
-    "apps/honknet-web"
+    "apps/honknet-web",
+    "game/scripts"
   ],
   "scripts": {
     "studio": "npm --workspace apps/honknet-studio run dev",
     "web": "npm --workspace apps/honknet-web run dev",
     "build:studio": "npm --workspace apps/honknet-studio run build",
     "build:web": "npm --workspace apps/honknet-web run build",
+    "build:game-scripts": "npm --workspace game/scripts run build",
     "typecheck": "npm --workspaces run typecheck",
     "test:source": "python3 tools/source_audit.py"
   },

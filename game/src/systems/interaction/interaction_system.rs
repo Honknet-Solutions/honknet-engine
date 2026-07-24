@@ -1,6 +1,10 @@
-use crate::components::doors::{DoorBoltComponent, DoorComponent, DoorState};
+use crate::components::atmos::TileAtmosphereComponent;
+use crate::components::doors::{
+    DoorBoltComponent, DoorComponent, DoorPressureComponent, DoorState,
+};
 use crate::components::hands::{HandsComponent, ItemComponent};
 use crate::components::interaction::InteractionComponent;
+use crate::components::power::PoweredComponent;
 use crate::systems::access::check_user_access;
 use crate::systems::hands::pick_up_item;
 use honknet_core::Entity;
@@ -14,6 +18,17 @@ pub fn interaction_system(
     target: Entity,
     user_pos: Vec2,
     target_pos: Vec2,
+) -> bool {
+    interaction_system_with_access(world, user, target, user_pos, target_pos, None)
+}
+
+pub fn interaction_system_with_access(
+    world: &mut World,
+    user: Entity,
+    target: Entity,
+    user_pos: Vec2,
+    target_pos: Vec2,
+    access_allowed: Option<bool>,
 ) -> bool {
     let reach = world
         .get::<InteractionComponent>(user)
@@ -35,13 +50,38 @@ pub fn interaction_system(
             }
         }
 
+        if world
+            .get::<PoweredComponent>(target)
+            .is_some_and(|power| power.requires_power && !power.is_powered)
+        {
+            info!("Door {:?} has no power", target);
+            return false;
+        }
+
         // 2. Check ID Card access requirements
-        if !check_user_access(world, user, target) {
+        if !access_allowed.unwrap_or_else(|| check_user_access(world, user, target)) {
             info!(
                 "Access Denied: User {:?} lacks required ID card access for door {:?}",
                 user, target
             );
             return false;
+        }
+
+        if door.state == DoorState::Closed {
+            if let Some(pressure) = world.get::<DoorPressureComponent>(target) {
+                let first = world
+                    .get::<TileAtmosphereComponent>(pressure.first_atmosphere)
+                    .map(|tile| tile.air.pressure(tile.volume));
+                let second = world
+                    .get::<TileAtmosphereComponent>(pressure.second_atmosphere)
+                    .map(|tile| tile.air.pressure(tile.volume));
+                if first.zip(second).is_some_and(|(first, second)| {
+                    (first - second).abs() > pressure.maximum_safe_delta_kpa
+                }) {
+                    info!("Door {:?} pressure safety prevented opening", target);
+                    return false;
+                }
+            }
         }
 
         if let Some(door_mut) = world.get_mut::<DoorComponent>(target) {

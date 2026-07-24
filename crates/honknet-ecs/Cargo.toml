@@ -10,5 +10,5 @@ honknet-events = { path = "../honknet-events" }
 honknet-reflection = { path = "../honknet-reflection" }
 parking_lot.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
-

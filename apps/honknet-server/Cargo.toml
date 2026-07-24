@@ -13,6 +13,7 @@ futures-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 bincode.workspace = true
 honknet-core = { path = "../../crates/honknet-core" }
 honknet-game = { path = "../../game" }
@@ -26,3 +27,4 @@ honknet-replication = { path = "../../crates/honknet-replication" }
 honknet-runtime = { path = "../../crates/honknet-runtime" }
 honknet-scheduler = { path = "../../crates/honknet-scheduler" }
 honknet-observability = { path = "../../crates/honknet-observability" }
+honknet-admin = { path = "../../crates/honknet-admin" }

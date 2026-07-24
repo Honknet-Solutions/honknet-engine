@@ -6,6 +6,7 @@ license.workspace=true
 
 [dependencies]
 honknet-serialization = { path = "../honknet-serialization" }
+honknet-core = { path = "../honknet-core" }
 honknet-math = { path = "../honknet-math" }
 serde.workspace = true
 bincode.workspace = true
@@ -14,4 +15,3 @@ bitflags.workspace = true
 crc32fast.workspace = true
 zstd.workspace = true
 thiserror.workspace = true
-

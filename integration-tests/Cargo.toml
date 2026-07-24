@@ -10,8 +10,11 @@ honknet-ecs={path="../crates/honknet-ecs"}
 honknet-game={path="../game"}
 honknet-math={path="../crates/honknet-math"}
 honknet-map={path="../crates/honknet-map"}
+honknet-net-core={path="../crates/honknet-net-core"}
 honknet-physics={path="../crates/honknet-physics"}
 honknet-persistence={path="../crates/honknet-persistence"}
 honknet-replay={path="../crates/honknet-replay"}
 honknet-runtime={path="../crates/honknet-runtime"}
+futures-util.workspace=true
 tokio.workspace=true
+tokio-tungstenite.workspace=true
